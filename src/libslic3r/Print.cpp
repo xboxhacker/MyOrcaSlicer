@@ -172,6 +172,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "reduce_infill_retraction",
         "filename_format",
         "retraction_minimum_travel",
+        "restart_extra_minimum_travel",
         "retract_before_wipe",
         "retract_after_wipe",
         "retract_when_changing_layer",

@@ -49,8 +49,10 @@ public:
     double position() const { return m_E; }
     // Get current retraction value. Only non-negative values.
     double retracted() const { return m_retracted; }
+    double retracted_amount() const { return m_share_extruder ? m_share_retracted[extruder_id()] : m_retracted; }
     // Get extra retraction planned after
     double restart_extra() const { return m_restart_extra; }
+    void   clear_restart_extra() { m_restart_extra = 0.; }
     // Setters for the PlaceholderParser.
     // Set current extruder position. Only applicable with absolute extruder addressing.
     void   set_position(double e) { m_E = e; }

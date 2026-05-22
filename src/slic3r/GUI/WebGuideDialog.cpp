@@ -634,7 +634,14 @@ void GuideFrame::OnError(wxWebViewEvent &evt)
     // Show the info bar with an error
     // m_info->ShowMessage(_L("An error occurred loading ") + evt.GetURL() +
     // "\n" + "'" + category + "'", wxICON_ERROR);
-    BOOST_LOG_TRIVIAL(trace) << "GuideFrame::OnError: An error occurred loading " << evt.GetURL() << category;
+    BOOST_LOG_TRIVIAL(warning) << "GuideFrame::OnError: An error occurred loading " << evt.GetURL() << " (" << category << ")";
+
+    // WebView2 may fail to load file:// pages when the runtime is missing or misconfigured.
+    // Show the control anyway so the user is not stuck on a blank dialog until navigation completes.
+    if (m_browser) {
+        m_browser->Show();
+        Layout();
+    }
 
     UpdateState();
 }

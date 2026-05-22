@@ -8555,7 +8555,7 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
     std::string strFinish = wxGetApp().app_config->get("firstguide", "finish");
     long        pStyle    = wxCAPTION | wxCLOSE_BOX | wxSYSTEM_MENU;
     if (strFinish == "false" || strFinish.empty())
-        pStyle = wxCAPTION | wxTAB_TRAVERSAL;
+        pStyle = wxCAPTION | wxTAB_TRAVERSAL | wxCLOSE_BOX | wxSYSTEM_MENU;
 
     GuideFrame wizard(this, pStyle);
     auto page = start_page == ConfigWizard::SP_WELCOME ? GuideFrame::BBL_WELCOME :

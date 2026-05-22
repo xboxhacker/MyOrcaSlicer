@@ -72,6 +72,7 @@ const std::vector<std::string> filament_extruder_override_keys = {
     "filament_deretraction_speed",
     "filament_retract_restart_extra",  //not in filament_options_with_variant, added on 20250816
     "filament_retraction_minimum_travel",
+    "filament_restart_extra_minimum_travel",
     // BBS: floats
     "filament_wipe_distance",
     // bools
@@ -5119,6 +5120,14 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats { 2. });
 
+    def = this->add("restart_extra_minimum_travel", coFloats);
+    def->label = L("Restart extra travel distance threshold");
+    def->tooltip = L("Only apply extra length on restart when the travel move since retraction is longer than this threshold. "
+                     "Set to 0 to always apply extra length on restart.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats { 0. });
+
     def = this->add("retract_before_wipe", coPercents);
     def->label = L("Retract amount before wipe");
     def->tooltip = L("The length of fast retraction before wipe, relative to retraction length.");
@@ -7260,7 +7269,7 @@ void PrintConfigDef::init_extruder_option_keys()
         "extruder_type", "nozzle_diameter", "default_nozzle_volume_type", "min_layer_height", "max_layer_height", "extruder_offset",
         "extruder_printable_height", "nozzle_volume", "nozzle_type", "nozzle_flush_dataset",
         "retraction_length", "z_hop", "z_hop_types", "travel_slope", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retraction_speed", "deretraction_speed",
-        "retract_before_wipe", "retract_after_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
+        "retract_before_wipe", "retract_after_wipe", "retract_restart_extra", "retraction_minimum_travel", "restart_extra_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "extruder_colour",
         "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"
     };
@@ -7278,6 +7287,7 @@ void PrintConfigDef::init_extruder_option_keys()
         "retraction_distances_when_cut",
         "retraction_length",
         "retraction_minimum_travel",
+        "restart_extra_minimum_travel",
         "retraction_speed",
         "travel_slope",
         "wipe",
@@ -7293,7 +7303,7 @@ void PrintConfigDef::init_filament_option_keys()
     m_filament_option_keys = {
         "filament_diameter", "min_layer_height", "max_layer_height","volumetric_speed_coefficients",
         "retraction_length", "z_hop", "z_hop_types", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retraction_speed", "deretraction_speed",
-        "retract_before_wipe", "retract_after_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
+        "retract_before_wipe", "retract_after_wipe", "retract_restart_extra", "retraction_minimum_travel", "restart_extra_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "filament_colour",
         "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"/*,"filament_seam_gap"*/
     };
@@ -7311,6 +7321,7 @@ void PrintConfigDef::init_filament_option_keys()
         "retraction_distances_when_cut",
         "retraction_length",
         "retraction_minimum_travel",
+        "restart_extra_minimum_travel",
         "retraction_speed",
         "wipe",
         "wipe_distance",
@@ -8296,6 +8307,7 @@ std::set<std::string> filament_options_with_variant = {
     "filament_retraction_speed",
     "filament_deretraction_speed",
     "filament_retraction_minimum_travel",
+    "filament_restart_extra_minimum_travel",
     "filament_retract_when_changing_layer",
      "filament_wipe",
     //BBS
@@ -8349,6 +8361,7 @@ std::set<std::string> printer_options_with_variant_1 = {
     "retraction_speed",
     "deretraction_speed",
     "retraction_minimum_travel",
+    "restart_extra_minimum_travel",
     "retract_when_changing_layer",
     "wipe",
     "wipe_distance",

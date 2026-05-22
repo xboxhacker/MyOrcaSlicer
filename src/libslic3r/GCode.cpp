@@ -7463,6 +7463,11 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         this->set_last_pos(travel.points.back());
     }
 
+    if (Extruder *extruder = m_writer.filament()) {
+        if (extruder->retracted_amount() > EPSILON)
+            m_travel_distance_since_retract += unscale<double>(travel.length());
+    }
+
     return gcode;
 }
 
@@ -7606,12 +7611,24 @@ bool GCode::needs_retraction(const Polyline &travel, ExtrusionRole role, LiftTyp
     return true;
 }
 
+std::string GCode::unretract()
+{
+    if (Extruder *extruder = m_writer.filament()) {
+        const double threshold = EXTRUDER_CONFIG(restart_extra_minimum_travel);
+        if (threshold > EPSILON && m_travel_distance_since_retract + EPSILON < threshold)
+            extruder->clear_restart_extra();
+    }
+    return m_writer.unlift() + m_writer.unretract();
+}
+
 std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType lift_type, bool apply_instantly, ExtrusionRole role)
 {
     std::string gcode;
 
     if (m_writer.filament() == nullptr)
         return gcode;
+
+    m_travel_distance_since_retract = 0.;
 
     // wipe (if it's enabled for this extruder and we have a stored wipe path and no-zero wipe distance)
     if (FILAMENT_CONFIG(wipe) && m_wipe.has_path() && scale_(FILAMENT_CONFIG(wipe_distance)) > SCALED_EPSILON) {

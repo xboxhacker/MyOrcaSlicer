@@ -1567,6 +1567,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionString,             printer_model))
     ((ConfigOptionFloat,              resolution))
     ((ConfigOptionFloats,             retraction_minimum_travel))
+    ((ConfigOptionFloats,             restart_extra_minimum_travel))
     ((ConfigOptionBools,              retract_when_changing_layer))
     ((ConfigOptionFloat,              skirt_distance))
     ((ConfigOptionInt,                skirt_height))

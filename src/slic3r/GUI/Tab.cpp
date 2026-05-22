@@ -3646,6 +3646,7 @@ void TabFilament::add_filament_overrides_page()
                                         "filament_deretraction_speed",
                                         "filament_retract_restart_extra",
                                         "filament_retraction_minimum_travel",
+                                        "filament_restart_extra_minimum_travel",
                                         "filament_retract_when_changing_layer",
                                         "filament_wipe",
                                         //BBS
@@ -3775,6 +3776,7 @@ void TabFilament::update_filament_overrides_page(const DynamicPrintConfig* print
                                             "filament_deretraction_speed",
                                             "filament_retract_restart_extra",
                                             "filament_retraction_minimum_travel",
+                                        "filament_restart_extra_minimum_travel",
                                             "filament_retract_when_changing_layer",
                                             "filament_wipe",
                                             //BBS
@@ -5153,6 +5155,7 @@ if (is_marlin_flavor)
             optgroup->append_single_option_line("retraction_speed", "printer_extruder_retraction#retraction-speed", extruder_idx);
             optgroup->append_single_option_line("deretraction_speed", "printer_extruder_retraction#deretraction-speed", extruder_idx);
             optgroup->append_single_option_line("retraction_minimum_travel", "printer_extruder_retraction#travel-distance-threshold", extruder_idx);
+            optgroup->append_single_option_line("restart_extra_minimum_travel", "printer_extruder_retraction#restart-extra-travel-distance-threshold", extruder_idx);
             optgroup->append_single_option_line("retract_when_changing_layer", "printer_extruder_retraction#retract-on-layer-change", extruder_idx);
             optgroup->append_single_option_line("wipe", "printer_extruder_retraction#wipe-while-retracting", extruder_idx);
             optgroup->append_single_option_line("wipe_distance", "printer_extruder_retraction#wipe-distance", extruder_idx);
@@ -5544,6 +5547,7 @@ void TabPrinter::toggle_options()
         // user can customize travel length if we have retraction length or we"re using
         // firmware retraction
         toggle_option("retraction_minimum_travel", have_retract_length || use_firmware_retraction, i);
+        toggle_option("restart_extra_minimum_travel", have_retract_length || use_firmware_retraction, i);
 
         // user can customize other retraction options if retraction is enabled
         //BBS
@@ -5561,7 +5565,7 @@ void TabPrinter::toggle_options()
         // some options only apply when not using firmware retraction
         vec.resize(0);
         vec = {"retraction_speed", "deretraction_speed", "retract_before_wipe", "retract_after_wipe",
-               "retract_length", "retract_restart_extra", "wipe", "wipe_distance"};
+               "retract_length", "retract_restart_extra", "restart_extra_minimum_travel", "wipe", "wipe_distance"};
         for (auto el : vec)
             //BBS
             toggle_option(el, retraction && !use_firmware_retraction, i);

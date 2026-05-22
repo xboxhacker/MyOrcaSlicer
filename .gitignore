@@ -46,3 +46,7 @@ test.js
 internal_docs/
 *.flatpak
 /flatpak-repo/
+
+# Local portable build output (do not commit)
+/dist/
+/build-portable/
