@@ -10,7 +10,7 @@ flatpak install flathub org.gnome.Platform//49 org.gnome.Sdk//49
 ##
 # in OrcaSlicer folder, run following command to build Orca
 # # First time build
-# flatpak-builder --state-dir=.flatpak-builder --keep-build-dirs --user --force-clean build-dir scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.yml
+# flatpak-builder --state-dir=.flatpak-builder --keep-build-dirs --user --force-clean build-dir scripts/flatpak/io.github.xboxhacker.OrcaSlicer.yml
 
 # # Subsequent builds (only rebuilding OrcaSlicer)
-# flatpak-builder --state-dir=.flatpak-builder --keep-build-dirs --user build-dir scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.yml --build-only=OrcaSlicer
+# flatpak-builder --state-dir=.flatpak-builder --keep-build-dirs --user build-dir scripts/flatpak/io.github.xboxhacker.OrcaSlicer.yml --build-only=OrcaSlicer

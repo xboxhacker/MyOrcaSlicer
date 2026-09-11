@@ -6,14 +6,89 @@
 
 #include "libslic3r/Geometry/ConvexHull.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/TriangleMesh.hpp"
 
 #include <numeric>
+#include <limits>
 
 #include <glad/gl.h>
 
 namespace Slic3r {
 namespace GUI {
 
+namespace {
+
+// Area-weighted normal of real mesh triangles that match the clicked hull plane.
+// Lay-on-face picking uses the convex hull, which can highlight a whole region while
+// rotating around a 3-point hull facet that is slightly off the CAD face.
+Vec3d flatten_normal_from_mesh(const ModelObject *mo, const Vec3d &hull_normal)
+{
+    const Vec3d n0 = hull_normal.normalized();
+    // ~5 deg: keep tessellated "flat" faces together, skip walls/fillets.
+    const double min_dot = 0.996;
+    const double slab_mm = 1.0;
+
+    struct Cand {
+        Vec3d  n;
+        double area;
+        double proj;
+    };
+    std::vector<Cand> cands;
+    double max_proj = -std::numeric_limits<double>::max();
+
+    for (const ModelVolume *vol : mo->volumes) {
+        if (vol->type() != ModelVolumeType::MODEL_PART)
+            continue;
+        const indexed_triangle_set &its   = vol->mesh().its;
+        const Transform3d           vtrafo = vol->get_matrix();
+        const Matrix3d              nmat   = vtrafo.matrix().block<3, 3>(0, 0).inverse().transpose();
+        const std::vector<Vec3f>    fn     = its_face_normals(its);
+        for (size_t i = 0; i < its.indices.size(); ++i) {
+            Vec3d n = nmat * fn[i].cast<double>();
+            const double nn = n.squaredNorm();
+            if (nn < 1e-16)
+                continue;
+            n /= std::sqrt(nn);
+            if (n.dot(n0) < min_dot)
+                continue;
+            const Vec3i32 &face = its.indices[i];
+            const Vec3d v0 = vtrafo * its.vertices[face[0]].cast<double>();
+            const Vec3d v1 = vtrafo * its.vertices[face[1]].cast<double>();
+            const Vec3d v2 = vtrafo * its.vertices[face[2]].cast<double>();
+            const double area = (v1 - v0).cross(v2 - v0).norm() * 0.5;
+            if (area < 1e-10)
+                continue;
+            const Vec3d  c    = (v0 + v1 + v2) / 3.0;
+            const double proj = c.dot(n0);
+            max_proj = std::max(max_proj, proj);
+            cands.push_back({n, area, proj});
+        }
+    }
+
+    Vec3d  acc = Vec3d::Zero();
+    double w   = 0.;
+    for (const Cand &t : cands) {
+        if (t.proj < max_proj - slab_mm)
+            continue;
+        acc += t.area * t.n;
+        w += t.area;
+    }
+    if (w < 1e-10)
+        return n0;
+    Vec3d n = acc.normalized();
+    if (n.dot(n0) < 0.)
+        n = -n;
+    return n;
+}
+
+} // namespace
+
+Vec3d GLGizmoFlatten::refine_flatten_normal(const ModelObject *mo, const Vec3d &hull_normal)
+{
+    if (mo == nullptr)
+        return hull_normal.normalized();
+    return flatten_normal_from_mesh(mo, hull_normal);
+}
 
 GLGizmoFlatten::GLGizmoFlatten(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id)
     : GLGizmoBase(parent, icon_filename, sprite_id)
@@ -25,8 +100,11 @@ bool GLGizmoFlatten::on_mouse(const wxMouseEvent &mouse_event)
         if (m_hover_id != -1) {
             Selection &selection = m_parent.get_selection();
             if (selection.is_single_full_instance()) {
+                Vec3d normal = m_planes[m_hover_id].normal;
+                if (const ModelObject *mo = m_c->selection_info()->model_object())
+                    normal = refine_flatten_normal(mo, normal);
                 // Rotate the object so the normal points downward:
-                selection.flattening_rotate(m_planes[m_hover_id].normal);
+                selection.flattening_rotate(normal);
                 m_parent.do_rotate(L("Gizmo-Place on Face"));
                 wxGetApp().obj_manipul()->set_dirty();
             }
@@ -193,11 +271,19 @@ void GLGizmoFlatten::update_planes()
         if (facet_idx == num_of_facets)
             break; // Everything was visited already
 
+        Vec3d  area_normal = Vec3d::Zero();
+        double area_sum    = 0.;
         while (facet_queue_cnt > 0) {
             int facet_idx = facet_queue[-- facet_queue_cnt];
             const stl_normal& this_normal = face_normals[facet_idx];
             if (std::abs(this_normal(0) - (*normal_ptr)(0)) < 0.001 && std::abs(this_normal(1) - (*normal_ptr)(1)) < 0.001 && std::abs(this_normal(2) - (*normal_ptr)(2)) < 0.001) {
                 const Vec3i32 face = ch.its.indices[facet_idx];
+                const Vec3d v0 = ch.its.vertices[face[0]].cast<double>();
+                const Vec3d v1 = ch.its.vertices[face[1]].cast<double>();
+                const Vec3d v2 = ch.its.vertices[face[2]].cast<double>();
+                const double tri_area = (v1 - v0).cross(v2 - v0).norm() * 0.5;
+                area_normal += tri_area * this_normal.cast<double>();
+                area_sum += tri_area;
                 for (int j=0; j<3; ++j)
                     m_planes.back().vertices.emplace_back(ch.its.vertices[face[j]].cast<double>());
 
@@ -207,7 +293,10 @@ void GLGizmoFlatten::update_planes()
                         facet_queue[facet_queue_cnt ++] = neighbor_idx;
             }
         }
-        m_planes.back().normal = normal_ptr->cast<double>();
+        if (area_sum > 1e-10)
+            m_planes.back().normal = area_normal.normalized();
+        else
+            m_planes.back().normal = normal_ptr->cast<double>();
 
         Pointf3s& verts = m_planes.back().vertices;
         // Now we'll transform all the points into world coordinates, so that the areas, angles and distances

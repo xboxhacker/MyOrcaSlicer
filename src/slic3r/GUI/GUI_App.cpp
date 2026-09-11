@@ -391,21 +391,27 @@ static void migrate_flatpak_legacy_datadir(const boost::filesystem::path &data_d
     }
     std::cerr << "Migrating Flatpak data dir: " << data_dir_path << std::endl;
 
-    std::string legacy_data_dir_str = data_dir_path.string();
-    boost::replace_first(legacy_data_dir_str, "io.github.nanashithenameless.OrcaSlicer", "io.github.orcaslicer.OrcaSlicer");
-    const fs::path legacy_data_dir(legacy_data_dir_str);
-
-    std::cerr << "Legacy Flatpak data dir: " << legacy_data_dir << std::endl;
-
-    if ( ! fs::exists(legacy_data_dir) || ! fs::is_directory(legacy_data_dir))
-        return;
-    std::cerr << "Legacy Flatpak data dir exists: " << legacy_data_dir << std::endl;
-
-    try {
-        std::cerr << "Migrating Flatpak data dir from " << legacy_data_dir << " to " << data_dir_path << std::endl;
-        copy_directory_recursively(legacy_data_dir, data_dir_path);
-    } catch (const std::exception &ex) {
-        std::cerr << "Failed to migrate Flatpak data dir from " << legacy_data_dir << " to " << data_dir_path << ": " << ex.what() << std::endl;
+    const std::string new_id = "io.github.xboxhacker.OrcaSlicer";
+    const char *legacy_ids[] = {
+        "io.github.nanashithenameless.OrcaSlicer",
+        "io.github.orcaslicer.OrcaSlicer",
+    };
+    for (const char *legacy_id : legacy_ids) {
+        std::string candidate = data_dir_path.string();
+        boost::replace_first(candidate, new_id, legacy_id);
+        const fs::path legacy_data_dir(candidate);
+        if (legacy_data_dir == data_dir_path)
+            continue;
+        std::cerr << "Legacy Flatpak data dir: " << legacy_data_dir << std::endl;
+        if (!fs::exists(legacy_data_dir) || !fs::is_directory(legacy_data_dir))
+            continue;
+        try {
+            std::cerr << "Migrating Flatpak data dir from " << legacy_data_dir << " to " << data_dir_path << std::endl;
+            copy_directory_recursively(legacy_data_dir, data_dir_path);
+            return;
+        } catch (const std::exception &ex) {
+            std::cerr << "Failed to migrate Flatpak data dir from " << legacy_data_dir << " to " << data_dir_path << ": " << ex.what() << std::endl;
+        }
     }
 }
 

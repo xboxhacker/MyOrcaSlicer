@@ -6,6 +6,8 @@
 #include "../ExtrusionEntity.hpp"
 #include "PchipInterpolatorHelper.hpp"
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace Slic3r {
 
@@ -14,6 +16,7 @@ class SmallAreaInfillFlowCompensator
 public:
     SmallAreaInfillFlowCompensator() = delete;
     explicit SmallAreaInfillFlowCompensator(const Slic3r::GCodeConfig& config);
+    explicit SmallAreaInfillFlowCompensator(const std::vector<std::string>& model_lines);
     ~SmallAreaInfillFlowCompensator();
 
     double modify_flow(const double line_length, const double dE, const ExtrusionRole role);

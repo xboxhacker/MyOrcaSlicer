@@ -50,3 +50,6 @@ internal_docs/
 # Local portable build output (do not commit)
 /dist/
 /build-portable/
+gap_test.gcode
+gap_test2.gcode
+CompRT_Multi_VEHO.3mf

@@ -1,6 +1,6 @@
 <div align="center">
 
-# **THIS IS AN UNOFFICIAL MODIFIED FORK SEE <https://github.com/OrcaSlicer/OrcaSlicer> FOR THE OFFICIAL VERSION**
+# **XboxHacker OrcaSlicer** — unofficial fork. See <https://github.com/OrcaSlicer/OrcaSlicer> for the official version.
 
 # DO NOT REPORT BUGS FOUND HERE TO THE OFFICIAL VERSION
 
@@ -31,7 +31,7 @@ The wiki below aims to provide a detailed explanation of the slicer settings, in
 
 Please note that the wiki is a work in progress. We appreciate your patience as we continue to develop and improve it!
 
-- **[Access the unofficial wiki here](https://github.com/NanashiTheNameless/OrcaSlicer/wiki)**
+- **[Access the unofficial wiki here](https://github.com/xboxhacker/MyOrcaSlicer/wiki)**
 
 # Download
 
@@ -43,13 +43,13 @@ This fork **does not publish stable builds**, for stability and sanity **go to t
 
 ## Nightly Builds
 
-**[Download the Latest Nightly Build](https://github.com/NanashiTheNameless/OrcaSlicer/releases/tag/Nightly-Rolling)**
+**[Download the Latest Nightly Build](https://github.com/xboxhacker/MyOrcaSlicer/releases/tag/Nightly-Rolling)**
 
 # How to install
 
 ## Windows
 
-Download the **Windows Installer exe** for your preferred version from the [releases page]([https://github.com/NanashiTheNameless/OrcaSlicer/releases/latest](https://github.com/NanashiTheNameless/OrcaSlicer/releases/tag/Nightly-Rolling)).
+Download the **Windows Installer exe** for your preferred version from the [releases page]([https://github.com/xboxhacker/MyOrcaSlicer/releases/latest](https://github.com/xboxhacker/MyOrcaSlicer/releases/tag/Nightly-Rolling)).
 
  - *For convenience there is also a portable build available.*
     <details>
@@ -88,7 +88,7 @@ Download the **Windows Installer exe** for your preferred version from the [rele
 ### Flathub (Recommended)
 This OrcaSlicer fork is **NOT** available through FlatHub!
 
-<https://github.com/NanashiTheNameless/OrcaSlicer/releases/tag/Nightly-Rolling>
+<https://github.com/xboxhacker/MyOrcaSlicer/releases/tag/Nightly-Rolling>
 
 Install from the command line:
 
@@ -100,7 +100,7 @@ flatpak run com.orcaslicer.OrcaSlicer
 It can also be installed through graphical software managers (KDE Discover, GNOME Software, etc.) when Flathub is enabled. Search for **OrcaSlicer** in your software center.
 
 ### AppImage
- 1. Download App image from the [releases page](<https://github.com/NanashiTheNameless/OrcaSlicer/releases/tag/Nightly-Rolling>).
+ 1. Download App image from the [releases page](<https://github.com/xboxhacker/MyOrcaSlicer/releases/tag/Nightly-Rolling>).
  2. Double click the downloaded file to run it.
 
  3. If you run into trouble executing it, try this command in the terminal:
@@ -108,7 +108,7 @@ It can also be installed through graphical software managers (KDE Discover, GNOM
 
 # How to Compile
 
-All updated build instructions for Windows, macOS, and Linux are now available on the unofficial [OrcaSlicer Wiki - How to build](https://github.com/NanashiTheNameless/OrcaSlicer/wiki/How-to-build) page.
+All updated build instructions for Windows, macOS, and Linux are now available on the unofficial [OrcaSlicer Wiki - How to build](https://github.com/xboxhacker/MyOrcaSlicer/wiki/How-to-build) page.
 
 Please refer to the wiki to ensure you're following the latest and most accurate steps for your platform.
 

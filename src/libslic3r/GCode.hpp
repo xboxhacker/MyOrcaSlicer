@@ -254,7 +254,9 @@ public:
     std::string     travel_to(const Point& point, ExtrusionRole role, std::string comment, double z = DBL_MAX);
     bool            needs_retraction(const Polyline& travel, ExtrusionRole role, LiftType& lift_type);
     std::string     retract(bool toolchange = false, bool is_last_retraction = false, LiftType lift_type = LiftType::NormalLift, bool apply_instantly = false, ExtrusionRole role = erNone);
-    std::string     unretract();
+    // upcoming_extrusion_mm: first extrusion segment length after this unretract (mm); negative if unknown.
+    // Pass a negative value when unknown (restart extra is always applied when threshold applies).
+    std::string     unretract(double upcoming_extrusion_mm = -1.);
     std::string     set_extruder(unsigned int extruder_id, double print_z, bool by_object=false, int toolchange_temp_override = -1);
     bool is_BBL_Printer();
     WipeTowerType wipe_tower_type();
@@ -550,12 +552,12 @@ private:
     TimelapsePosPicker                  m_timelapse_pos_picker;
     bool                                m_enable_loop_clipping;
     //resonance avoidance
-    bool                                m_resonance_avoidance; 
+    bool                                m_resonance_avoidance;
     // If enabled, the G-code generator will put following comments at the ends
     // of the G-code lines: _EXTRUDE_SET_SPEED, _WIPE, _OVERHANG_FAN_START, _OVERHANG_FAN_END
     // Those comments are received and consumed (removed from the G-code) by the CoolingBuffer.pm Perl module.
     bool                                m_enable_cooling_markers;
-    
+
     bool m_enable_exclude_object;
     std::vector<size_t> m_label_objects_ids;
     std::string _encode_label_ids_to_base64(std::vector<size_t> ids);
@@ -592,7 +594,7 @@ private:
 #if !defined(NDEBUG)
 #define ORCA_CHECK_GCODE_PLACEHOLDERS 1
 #endif
-    
+
 #if ORCA_CHECK_GCODE_PLACEHOLDERS
     std::map<std::string, std::vector<std::string>> m_placeholder_error_messages;
 #endif
@@ -604,13 +606,14 @@ private:
     std::unique_ptr<SpiralVase>         m_spiral_vase;
 
     std::unique_ptr<PressureEqualizer>  m_pressure_equalizer;
-    
+
     std::unique_ptr<AdaptivePAProcessor>      m_pa_processor;
 
     std::unique_ptr<WipeTowerIntegration> m_wipe_tower;
 
     std::unique_ptr<SmallAreaInfillFlowCompensator> m_small_area_infill_flow_compensator;
-    
+    std::unique_ptr<SmallAreaInfillFlowCompensator> m_ironing_small_area_flow_compensator;
+
     // Heights (print_z) at which the skirt has already been extruded.
     std::vector<coordf_t>               m_skirt_done;
     // Has the brim been extruded already? Brim is being extruded only for the first object of a multi-object print.
@@ -643,8 +646,6 @@ private:
     unsigned int m_toolchange_count;
     coordf_t m_nominal_z;
     bool m_need_change_layer_lift_z = false;
-    // Travel distance accumulated since the last retraction, used for restart_extra_minimum_travel.
-    double m_travel_distance_since_retract = 0.;
     int m_start_gcode_filament = -1;
     std::string m_filament_instances_code;
 
@@ -657,6 +658,8 @@ private:
     double      calc_max_volumetric_speed(const double layer_height, const double line_width, const std::string co_str);
     std::string _extrude(const ExtrusionPath &path, std::string description = "", double speed = -1);
     bool _needSAFC(const ExtrusionPath &path);
+    bool _needIroningSAFC(const ExtrusionPath &path, double line_length);
+    double _apply_safc(const ExtrusionPath &path, double line_length, double dE, std::string &tempDescription);
     void print_machine_envelope(GCodeOutputStream& file, Print& print);
     void _print_first_layer_bed_temperature(GCodeOutputStream &file, Print &print, const std::string &gcode, unsigned int first_printing_extruder_id, bool wait);
     void _print_first_layer_extruder_temperatures(GCodeOutputStream &file, Print &print, const std::string &gcode, unsigned int first_printing_extruder_id, bool wait);

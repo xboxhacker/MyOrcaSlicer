@@ -25,9 +25,13 @@ bool nearly_equal(double a, double b)
 }
 
 SmallAreaInfillFlowCompensator::SmallAreaInfillFlowCompensator(const Slic3r::GCodeConfig& config)
+    : SmallAreaInfillFlowCompensator(config.small_area_infill_flow_compensation_model.values)
+{}
+
+SmallAreaInfillFlowCompensator::SmallAreaInfillFlowCompensator(const std::vector<std::string>& model_lines)
 {
     try {
-        for (auto& line : config.small_area_infill_flow_compensation_model.values) {
+        for (auto& line : model_lines) {
             std::istringstream iss(line);
             std::string        value_str;
             double             eLength = 0.0;
@@ -103,7 +107,8 @@ double SmallAreaInfillFlowCompensator::flow_comp_model(const double line_length)
 double SmallAreaInfillFlowCompensator::modify_flow(const double line_length, const double dE, const ExtrusionRole role)
 {
     if (flowModel &&
-        (role == ExtrusionRole::erSolidInfill || role == ExtrusionRole::erTopSolidInfill || role == ExtrusionRole::erBottomSurface)) {
+        (role == ExtrusionRole::erSolidInfill || role == ExtrusionRole::erTopSolidInfill
+         || role == ExtrusionRole::erBottomSurface || role == ExtrusionRole::erIroning)) {
         return dE * flow_comp_model(line_length);
     }
 

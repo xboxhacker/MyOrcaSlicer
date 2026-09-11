@@ -46,6 +46,13 @@ void tree_supports_generate_paths(ExtrusionEntitiesPtr &dst, const Polygons &pol
 void fill_expolygons_with_sheath_generate_paths(
     ExtrusionEntitiesPtr &dst, const Polygons &polygons, Fill *filler, float density, ExtrusionRole role, const Flow &flow, const SupportParameters& support_params, bool with_sheath, bool no_sort);
 
+// Subtract the support blockers from every generated support layer, making a blocker an absolute
+// no-go volume instead of only suppressing the overhangs detected inside it. Raft layers are left
+// untouched. No-op unless support_blocker_strict is enabled. Used by both normal and tree supports.
+// Set project_blockers_upward for generators whose support drops straight down and so cannot route
+// around a blocker - see the implementation for why.
+void clip_support_layers_by_blockers(const PrintObject &object, SupportGeneratorLayersPtr &layers, bool project_blockers_upward = false);
+
 // returns sorted layers
 SupportGeneratorLayersPtr generate_support_layers(
 	PrintObject							&object,

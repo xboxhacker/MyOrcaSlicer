@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop">
-    <id>io.github.nanashithenameless.OrcaSlicer</id>
-    <launchable type="desktop-id">io.github.nanashithenameless.OrcaSlicer.desktop</launchable>
+    <id>io.github.xboxhacker.OrcaSlicer</id>
+    <launchable type="desktop-id">io.github.xboxhacker.OrcaSlicer.desktop</launchable>
     <provides>
-        <id>io.github.nanashithenameless.OrcaSlicer.desktop</id>
+        <id>io.github.xboxhacker.OrcaSlicer.desktop</id>
     </provides>
     <name>OrcaSlicer</name>
     <summary>(UNOFFICIAL) Get even more perfect prints!</summary>
-    <developer_name>NanashiTheNameless (Upstream: SoftFever)</developer_name>
-    <developer id="io.github.nanashithenameless.OrcaSlicer">
-        <name>NanashiTheNameless (Upstream: SoftFever)</name>
+    <developer_name>XboxHacker (Upstream: SoftFever)</developer_name>
+    <developer id="io.github.xboxhacker.OrcaSlicer">
+        <name>XboxHacker (Upstream: SoftFever)</name>
     </developer>
-    <url type="bugtracker">https://github.com/NanashiTheNameless/issues</url>
-    <url type="homepage">https://github.com/NanashiTheNameless/OrcaSlicer</url>
-    <url type="donation">https://github.com/NanashiTheNameless/OrcaSlicer/blob/main/.github/FUNDING.yml</url>
-    <url type="contact">https://github.com/NanashiTheNameless/OrcaSlicer/discussions</url>
-    <url type="faq">https://github.com/NanashiTheNameless/OrcaSlicer/blob/main/README.md</url>
-    <url type="contribute">https://github.com/NanashiTheNameless/OrcaSlicer</url>
-    <url type="vcs-browser">https://github.com/NanashiTheNameless/OrcaSlicer</url>
+    <url type="bugtracker">https://github.com/xboxhacker/MyOrcaSlicer/issues</url>
+    <url type="homepage">https://github.com/xboxhacker/MyOrcaSlicer</url>
+    <url type="donation">https://github.com/xboxhacker/MyOrcaSlicer/blob/main/.github/FUNDING.yml</url>
+    <url type="contact">https://github.com/xboxhacker/MyOrcaSlicer/discussions</url>
+    <url type="faq">https://github.com/xboxhacker/MyOrcaSlicer/blob/main/README.md</url>
+    <url type="contribute">https://github.com/xboxhacker/MyOrcaSlicer</url>
+    <url type="vcs-browser">https://github.com/xboxhacker/MyOrcaSlicer</url>
     <metadata_license>0BSD</metadata_license>
     <project_license>AGPL-3.0-only</project_license>
     <content_rating type="oars-1.1" />
@@ -30,11 +30,11 @@
     </recommends>
     <screenshots>
         <screenshot type="default">
-            <image>https://raw.githubusercontent.com/NanashiTheNameless/OrcaSlicer/main/scripts/flatpak/images/1.png</image>
+            <image>https://raw.githubusercontent.com/xboxhacker/MyOrcaSlicer/main/scripts/flatpak/images/1.png</image>
             <caption>A model ready to be sliced on a buildplate.</caption>
         </screenshot>
         <screenshot>
-            <image>https://raw.githubusercontent.com/NanashiTheNameless/OrcaSlicer/main/scripts/flatpak/images/2.png</image>
+            <image>https://raw.githubusercontent.com/xboxhacker/MyOrcaSlicer/main/scripts/flatpak/images/2.png</image>
             <caption>A calibration test ready to be printed out.</caption>
         </screenshot>
     </screenshots>

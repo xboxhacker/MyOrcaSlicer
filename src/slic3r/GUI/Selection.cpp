@@ -1447,6 +1447,24 @@ void Selection::flattening_rotate(const Vec3d& normal)
         // Additional rotation to align tnormal with the down vector in the world coordinate space.
         const Transform3d rotation_matrix = Transform3d(Eigen::Quaterniond().setFromTwoVectors(tnormal, -Vec3d::UnitZ()));
         v.set_instance_transformation(old_inst_trafo.get_offset_matrix() * rotation_matrix * old_inst_trafo.get_matrix_no_offset());
+
+        // Convex-hull / tessellation often leaves a ~0.05° residual (e.g. X = -90.05).
+        // If the pose is already a near-axis alignment, snap Euler angles to exact 90° multiples.
+        Geometry::Transformation inst = v.get_instance_transformation();
+        const Vec3d rot = inst.get_rotation();
+        auto err_to_right_angle = [](double a) {
+            a = std::fmod(std::abs(a), 0.5 * M_PI);
+            if (a > 0.25 * M_PI)
+                a = 0.5 * M_PI - a;
+            return a;
+        };
+        constexpr double max_err = 0.25 * M_PI / 180.0; // 0.25 deg
+        if (err_to_right_angle(rot.x()) <= max_err && err_to_right_angle(rot.y()) <= max_err &&
+            err_to_right_angle(rot.z()) <= max_err) {
+            const double q = 0.5 * M_PI;
+            inst.set_rotation(Vec3d(std::round(rot.x() / q) * q, std::round(rot.y() / q) * q, std::round(rot.z() / q) * q));
+            v.set_instance_transformation(inst);
+        }
     }
 
 #if !DISABLE_INSTANCES_SYNCH

@@ -102,6 +102,7 @@ enum class IroningType {
     TopSurfaces,
     TopmostOnly,
     AllSolid,
+    Painted,
     Count,
 };
 
@@ -960,6 +961,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     // Direction of the support pattern (in XY plane).`
     ((ConfigOptionFloat,               support_angle))
     ((ConfigOptionBool,                support_on_build_plate_only))
+    ((ConfigOptionBool,                support_blocker_strict))
     ((ConfigOptionBool,                support_critical_regions_only))
     ((ConfigOptionBool,                support_remove_small_overhang))
     ((ConfigOptionFloat,               support_top_z_distance))
@@ -1108,6 +1110,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                infill_shift_step))
     ((ConfigOptionString,               sparse_infill_rotate_template))
     ((ConfigOptionPercent,              sparse_infill_density))
+    ((ConfigOptionBool,                 progressive_infill))
+    ((ConfigOptionFloat,                progressive_infill_start_height))
+    ((ConfigOptionPercent,              progressive_infill_density_bottom))
+    ((ConfigOptionPercent,              progressive_infill_density_top))
+    ((ConfigOptionPercent,              progressive_infill_step))
     ((ConfigOptionEnum<InfillPattern>,  sparse_infill_pattern))
     ((ConfigOptionFloat,                lateral_lattice_angle_1))
     ((ConfigOptionFloat,                lateral_lattice_angle_2))
@@ -1153,6 +1160,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat, ironing_speed))
     ((ConfigOptionFloat, ironing_angle))
     ((ConfigOptionBool, ironing_angle_fixed))
+    ((ConfigOptionBool, ironing_small_area_flow_compensation))
     // Filament Ironing
     ((ConfigOptionPercentsNullable, filament_ironing_flow))
     ((ConfigOptionFloatsNullable, filament_ironing_spacing))
@@ -1231,6 +1239,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                first_layer_flow_ratio))
     ((ConfigOptionFloat,                outer_wall_flow_ratio))
     ((ConfigOptionFloat,                inner_wall_flow_ratio))
+    ((ConfigOptionFloat,                inner_wall_short_path_max_length))
+    ((ConfigOptionFloat,                inner_wall_short_path_flow_ratio))
     ((ConfigOptionFloat,                overhang_flow_ratio))
     ((ConfigOptionFloat,                sparse_infill_flow_ratio))
     ((ConfigOptionFloat,                internal_solid_infill_flow_ratio))
@@ -1255,6 +1265,32 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat, zaa_min_z))
     ((ConfigOptionFloat, zaa_minimize_perimeter_height))
     )
+
+inline bool infill_pattern_supports_progressive(InfillPattern pattern)
+{
+    return pattern != ipLightning
+        && pattern != ipAdaptiveCubic
+        && pattern != ipSupportCubic
+        && pattern != ip3DHoneycomb
+        && pattern != ipLockedZag;
+}
+
+inline bool progressive_infill_active(const PrintRegionConfig &config)
+{
+    return config.progressive_infill.value
+        && infill_pattern_supports_progressive(config.sparse_infill_pattern.value);
+}
+
+inline double sparse_infill_max_density(const PrintRegionConfig &config)
+{
+    if (progressive_infill_active(config)) {
+        double m = std::max(config.progressive_infill_density_bottom.value, config.progressive_infill_density_top.value);
+        if (config.progressive_infill_start_height.value > EPSILON)
+            m = std::max(m, config.sparse_infill_density.value);
+        return m;
+    }
+    return config.sparse_infill_density.value;
+}
 
 PRINT_CONFIG_CLASS_DEFINE(
     MachineEnvelopeConfig,
@@ -1398,6 +1434,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloats,              retract_lift_above))
     ((ConfigOptionFloats,              retract_lift_below))
     ((ConfigOptionEnumsGeneric,        retract_lift_enforce))
+    ((ConfigOptionFloats,              retract_lift_settle_time))
     ((ConfigOptionFloats,              retract_restart_extra))
     ((ConfigOptionFloats,              retract_restart_extra_toolchange))
     ((ConfigOptionFloats,              retraction_speed))
@@ -1481,6 +1518,7 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     // Small Area Infill Flow Compensation
     ((ConfigOptionStrings,              small_area_infill_flow_compensation_model))
+    ((ConfigOptionStrings,              ironing_small_area_flow_compensation_model))
 
     ((ConfigOptionBool,                has_scarf_joint_seam))
 )
@@ -1568,6 +1606,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionFloat,              resolution))
     ((ConfigOptionFloats,             retraction_minimum_travel))
     ((ConfigOptionFloats,             restart_extra_minimum_travel))
+    ((ConfigOptionBools,              no_restart_extra_on_inner_gap_sparse))
     ((ConfigOptionBools,              retract_when_changing_layer))
     ((ConfigOptionFloat,              skirt_distance))
     ((ConfigOptionInt,                skirt_height))

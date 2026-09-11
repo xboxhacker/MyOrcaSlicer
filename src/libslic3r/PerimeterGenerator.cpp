@@ -13,6 +13,7 @@
 #include "ExPolygonCollection.hpp"
 #include "Geometry.hpp"
 #include "Line.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cassert>
 #include <unordered_set>
@@ -118,6 +119,41 @@ static void reorder_oddeven_loops(std::vector<int>& even_odd, LoopSequence seque
         }
         break;
     }
+}
+
+// Apply the staggered-perimeter Z offset and the first/last special-layer flow tweaks to a single
+// path. Shared by the Arachne and Classic generators so both behave identically. Returns true when
+// the path was modified. Odd perimeters are raised by half a layer height (z_offset is expressed in
+// layer-height units and resolved against path.height during G-code export).
+static bool stagger_perimeter_path(const PerimeterGenerator& perimeter_generator, ExtrusionPath& cur_path)
+{
+    bool was_staggered = false;
+    if (perimeter_generator.number_of_layers < 4)
+        return was_staggered;
+
+    // The first layer must stay flat on the build plate. Raising its inner walls by half a layer
+    // height would leave them floating above the bed. The 1.5x flow applied to layer_id == 1 below
+    // is precisely what bridges the larger gap left by this un-staggered first layer.
+    if (perimeter_generator.layer_id == 0)
+        return was_staggered;
+
+    if (perimeter_generator.layer_id == 1) // i.e. layer after the first one
+    {
+        cur_path.extrusion_multiplier = 1.5;
+        was_staggered                 = true;
+    } else if (perimeter_generator.layer_id == perimeter_generator.number_of_layers - 2) // i.e. last layer before the last one
+    {
+        cur_path.extrusion_multiplier = 0.5;
+        was_staggered                 = true;
+    }
+
+    if (perimeter_generator.layer_id != perimeter_generator.number_of_layers - 2)
+    {
+        cur_path.z_offset = 0.5;
+        was_staggered     = true;
+    }
+
+    return was_staggered;
 }
 
 
@@ -246,6 +282,13 @@ static ExtrusionEntityCollection traverse_loops(const PerimeterGenerator &perime
             path.width = extrusion_width;
             path.height     = (float)perimeter_generator.layer_height;
             paths.emplace_back(std::move(path));
+        }
+
+        // Staggered perimeters: raise every odd (inner) perimeter by half a layer height.
+        // This mirrors the Arachne implementation so the Classic generator stays in sync.
+        if (perimeter_generator.config->staggered_perimeters && (loop.depth % 2 == 1)) {
+            for (ExtrusionPath &cur_path : paths)
+                stagger_perimeter_path(perimeter_generator, cur_path);
         }
 
         coll.append(ExtrusionLoop(std::move(paths), loop_role));
@@ -552,28 +595,9 @@ static ExtrusionEntityCollection traverse_extrusions(const PerimeterGenerator& p
             extrusion_paths_append(paths, *extrusion, role, is_external ? perimeter_generator.ext_perimeter_flow : perimeter_generator.perimeter_flow);
         }
 
-        auto check_and_stagger_path = [perimeter_generator](ExtrusionPath& cur_path) {
-            bool was_staggered = false;
-            if (perimeter_generator.layer_id == 1 && perimeter_generator.number_of_layers >= 4) // i.e. layer after the first one
-            {
-                cur_path.extrusion_multiplier = 1.5;
-                was_staggered                 = true;
-            } else if (perimeter_generator.layer_id == perimeter_generator.number_of_layers - 2 &&
-                       perimeter_generator.number_of_layers >= 4) // i.e. last layer before the last one
-            {
-                cur_path.extrusion_multiplier = 0.5;
-                was_staggered                 = true;
-            }
-
-			if (perimeter_generator.layer_id != perimeter_generator.number_of_layers - 2 &&
-			perimeter_generator.number_of_layers >= 4) // i.e. last layer
-            {
-                cur_path.z_offset = 0.5;
-                was_staggered     = true;
-            }
-
-			return was_staggered;
-		};
+        auto check_and_stagger_path = [&perimeter_generator](ExtrusionPath& cur_path) {
+            return stagger_perimeter_path(perimeter_generator, cur_path);
+        };
 
         // Append paths to collection.
         if (!paths.empty()) {
@@ -1305,7 +1329,7 @@ void PerimeterGenerator::process_classic()
         const Surface &surface = all_surfaces[surface_order[order_idx]];
         // detect how many perimeters must be generated for this island
         int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;  // 0-indexed loops
-        int sparse_infill_density = this->config->sparse_infill_density.value;
+        int sparse_infill_density = int(sparse_infill_max_density(*this->config));
         if (this->config->alternate_extra_wall && this->layer_id % 2 == 1 && !m_spiral_vase && sparse_infill_density > 0) // add alternating extra wall
             loop_number++;
         if (this->layer_id == object_config->raft_layers && this->config->only_one_wall_first_layer)
@@ -1460,7 +1484,7 @@ void PerimeterGenerator::process_classic()
                     this->split_top_surfaces(last, top_fills, last, fill_clip);
                 }
 
-                if (i == loop_number && (! has_gap_fill || this->config->sparse_infill_density.value == 0)) {
+                if (i == loop_number && (! has_gap_fill || sparse_infill_max_density(*this->config) == 0)) {
                 	// The last run of this loop is executed to collect gaps for gap fill.
                 	// As the gap fill is either disabled or not
                 	break;
@@ -2272,7 +2296,7 @@ void PerimeterGenerator::process_arachne()
         coord_t bead_width_0 = ext_perimeter_spacing;
         // detect how many perimeters must be generated for this island
         int loop_number = this->config->wall_loops + surface.extra_perimeters - 1; // 0-indexed loops
-        int sparse_infill_density = this->config->sparse_infill_density.value;
+        int sparse_infill_density = int(sparse_infill_max_density(*this->config));
         if (this->config->alternate_extra_wall && this->layer_id % 2 == 1 && !m_spiral_vase && sparse_infill_density > 0) // add alternating extra wall
             loop_number++;
 

@@ -481,6 +481,11 @@ private:
      */
     std::vector<Polygons> m_anti_overhang;
     /*!
+     * \brief Whether m_anti_overhang takes part in the collision areas, so branches route around a
+     * blocker instead of growing down through it. Set from support_blocker_strict.
+     */
+    bool m_strict_blockers = false;
+    /*!
      * \brief Radii that can be ignored by ceilRadius as they will never be requested, sorted.
      */
     std::vector<coord_t> m_ignorable_radii;

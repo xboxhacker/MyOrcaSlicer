@@ -832,6 +832,63 @@ void split_solid_surface(size_t layer_id, const SurfaceFill &fill, ExPolygons &n
 #endif
 }
 
+static float progressive_sparse_infill_density(const Layer &layer, const PrintRegionConfig &region_config)
+{
+    const double d_global = std::min(100., std::max(0., region_config.sparse_infill_density.value));
+    const double d0 = std::min(100., std::max(0., region_config.progressive_infill_density_bottom.value));
+    const double d1 = std::min(100., std::max(0., region_config.progressive_infill_density_top.value));
+    const double start_height = std::max(0., region_config.progressive_infill_start_height.value);
+    double z_first = 0.;
+    double z_last  = 0.;
+    bool   found   = false;
+    for (const Layer *l : layer.object()->layers()) {
+        bool has_sparse = false;
+        for (const LayerRegion *lr : l->regions()) {
+            for (const Surface &surface : lr->fill_surfaces.surfaces)
+                if (surface.surface_type == stInternal) {
+                    has_sparse = true;
+                    break;
+                }
+            if (has_sparse)
+                break;
+        }
+        if (!has_sparse)
+            continue;
+        if (!found) {
+            z_first = l->print_z;
+            found   = true;
+        }
+        z_last = l->print_z;
+    }
+    if (!found)
+        return float(d_global);
+    const double z_start = std::max(z_first, start_height);
+    if (layer.print_z + EPSILON < z_start)
+        return float(d_global);
+    if (z_last <= z_start + EPSILON)
+        return float(d0);
+    double t = (layer.print_z - z_start) / (z_last - z_start);
+    if (t < 0.) t = 0.;
+    if (t > 1.) t = 1.;
+    const double d = d0 + t * (d1 - d0);
+    const double step = std::min(100., std::max(0., region_config.progressive_infill_step.value));
+    const double range = std::abs(d1 - d0);
+    if (step <= EPSILON || range <= EPSILON)
+        return float(d);
+    const int n_jumps = std::max(1, (int) std::ceil(range / step - EPSILON));
+    const int n_bands = n_jumps + 1;
+    int band = (int) std::floor(t * n_bands + EPSILON);
+    if (band < 0) band = 0;
+    if (band >= n_bands) band = n_bands - 1;
+    const double signed_step = (d1 >= d0) ? step : -step;
+    double stepped = d0 + double(band) * signed_step;
+    if (d1 >= d0)
+        stepped = std::min(stepped, d1);
+    else
+        stepped = std::max(stepped, d1);
+    return float(stepped);
+}
+
 std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_param)
 {
 	std::vector<SurfaceFill> surface_fills;
@@ -871,6 +928,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 		        params.extruder 	 = layerm.region().extruder(extrusion_role);
 		        params.pattern 		 = region_config.sparse_infill_pattern.value;
 		        params.density       = float(region_config.sparse_infill_density);
+                if (!surface.is_solid() && progressive_infill_active(region_config))
+                    params.density = progressive_sparse_infill_density(layer, region_config);
                 params.lateral_lattice_angle_1 = region_config.lateral_lattice_angle_1;
                 params.lateral_lattice_angle_2 = region_config.lateral_lattice_angle_2;
                 params.infill_overhang_angle = region_config.infill_overhang_angle;
@@ -1499,6 +1558,16 @@ Polylines Layer::generate_sparse_infill_polylines_for_anchoring(FillAdaptive::Oc
 // Create ironing extrusions over top surfaces.
 void Layer::make_ironing()
 {
+	// Ironing is appended into fills after infill. Changing paint or ironing settings only
+	// invalidates posIroning, so infill is kept. Drop previous ironing paths first or they
+	// stay in the preview and look like blockers did nothing.
+	for (LayerRegion *layerm : m_regions) {
+		ExtrusionEntitiesPtr &entities = layerm->fills.entities;
+		for (int i = int(entities.size()) - 1; i >= 0; --i)
+			if (entities[i] != nullptr && entities[i]->role() == erIroning)
+				layerm->fills.remove(size_t(i));
+	}
+
 	// LayerRegion::slices contains surfaces marked with SurfaceType.
 	// Here we want to collect top surfaces extruded with the same extruder.
 	// A surface will be ironed with the same extruder to not contaminate the print with another material leaking from the nozzle.
@@ -1506,6 +1575,7 @@ void Layer::make_ironing()
 	// First classify regions based on the extruder used.
 	struct IroningParams {
 		InfillPattern pattern;
+		IroningType type        = IroningType::NoIroning;
 		int 		extruder 	= -1;
 		bool 		just_infill = false;
 		// Spacing of the ironing lines, also to calculate the extrusion flow from.
@@ -1526,6 +1596,7 @@ void Layer::make_ironing()
             RETURN_COMPARE_NON_EQUAL(angle);
             RETURN_COMPARE_NON_EQUAL(fixed_angle);
             RETURN_COMPARE_NON_EQUAL(inset);
+            RETURN_COMPARE_NON_EQUAL_TYPED(int, type);
 			return false;
 		}
 
@@ -1538,7 +1609,8 @@ void Layer::make_ironing()
                     this->angle == rhs.angle && 
                     this->fixed_angle == rhs.fixed_angle && 
                     this->pattern == rhs.pattern && 
-                    this->inset == rhs.inset;
+                    this->inset == rhs.inset &&
+                    this->type == rhs.type;
 		}
 
 		LayerRegion *layerm		= nullptr;
@@ -1567,6 +1639,7 @@ void Layer::make_ironing()
 			const PrintRegionConfig &config = layerm->region().config();
 			if (config.ironing_type != IroningType::NoIroning &&
 			    (config.ironing_type == IroningType::AllSolid ||
+			     config.ironing_type == IroningType::Painted ||
 				    ((config.top_shell_layers > 0 || (this->object()->print()->config().spiral_mode && config.bottom_shell_layers > 1)) &&
 					    (config.ironing_type == IroningType::TopSurfaces ||
 					        (config.ironing_type == IroningType::TopmostOnly && layerm->layer()->upper_layer == nullptr))))) {
@@ -1598,6 +1671,7 @@ void Layer::make_ironing()
                 ironing_params.angle        = (config.ironing_angle_fixed ? 0 : calculate_infill_rotation_angle(this->object(), this->id(), config.solid_infill_direction.value, config.solid_infill_rotate_template.value)) + config.ironing_angle * M_PI / 180.;
                 ironing_params.fixed_angle = config.ironing_angle_fixed || !config.solid_infill_rotate_template.value.empty();
 				ironing_params.pattern      = config.ironing_pattern;
+				ironing_params.type         = config.ironing_type;
 				ironing_params.layerm 		= layerm;
 				by_extruder.emplace_back(ironing_params);
 			}
@@ -1645,11 +1719,12 @@ void Layer::make_ironing()
 			for (size_t k = i; k < j; ++ k) {
 				const IroningParams		 &ironing_params  = by_extruder[k];
 				const PrintRegionConfig  &region_config   = ironing_params.layerm->region().config();
+				bool					  painted         = region_config.ironing_type == IroningType::Painted;
 				bool					  iron_everything = region_config.ironing_type == IroningType::AllSolid;
-				bool					  iron_completely = iron_everything;
-				if (iron_everything) {
+				bool					  iron_completely = iron_everything && !painted;
+				if (iron_everything && !painted) {
 					// Check whether there is any non-solid hole in the regions.
-					bool internal_infill_solid = region_config.sparse_infill_density.value > 95.;
+					bool internal_infill_solid = sparse_infill_max_density(region_config) > 95.;
 					for (const Surface &surface : ironing_params.layerm->fill_surfaces.surfaces)
 						if ((!internal_infill_solid && surface.surface_type == stInternal) || surface.surface_type == stInternalBridge || surface.surface_type == stInternalVoid) {
 							// Some fill region is not quite solid. Don't iron over the whole surface.
@@ -1663,7 +1738,7 @@ void Layer::make_ironing()
 						polygons_append(polys, surface.expolygon);
 				} else {
 					for (const Surface &surface : ironing_params.layerm->slices.surfaces)
-						if ((surface.surface_type == stTop && (region_config.top_shell_layers > 0 || this->object()->print()->config().spiral_mode)) || (iron_everything && surface.surface_type == stBottom && region_config.bottom_shell_layers > 0))
+						if ((surface.surface_type == stTop && (painted || region_config.top_shell_layers > 0 || this->object()->print()->config().spiral_mode)) || (iron_everything && surface.surface_type == stBottom && region_config.bottom_shell_layers > 0))
 							// stBottomBridge is not being ironed on purpose, as it would likely destroy the bridges.
 							polygons_append(polys, surface.expolygon);
 				}
@@ -1676,18 +1751,35 @@ void Layer::make_ironing()
 				}
 			}
 
-			if (! infills.empty() || j > i + 1) {
-				// Ironing over more than a single region or over solid internal infill.
+			// Layer::id() is offset by raft layers; paint projections are indexed by object layer.
+			size_t layer_idx = this->id();
+			const auto &object_layers = this->object()->layers();
+			for (size_t idx = 0; idx < object_layers.size(); ++ idx)
+				if (object_layers[idx] == this) {
+					layer_idx = idx;
+					break;
+				}
+			const Polygons &painted_enforcers = this->object()->painted_ironing_polygons(layer_idx);
+			const Polygons &painted_blockers  = this->object()->painted_ironing_blockers(layer_idx);
+			if (! painted_enforcers.empty())
+				polygons_append(polys, painted_enforcers);
+			if (! infills.empty() || j > i + 1 || ! painted_enforcers.empty()) {
 				if (! infills.empty())
-					// For IroningType::AllSolid only:
-					// Add solid infill areas for layers, that contain some non-ironable infil (sparse infill, bridge infill).
 					append(polys, std::move(infills));
 				polys = union_safety_offset(polys);
 			}
 			// Trim the top surfaces with half the nozzle diameter.
             // BBS: ironing inset
             double ironing_areas_offset = ironing_params.inset == 0 ? float(scale_(0.5 * nozzle_dmr)) : scale_(ironing_params.inset);
+			if (! painted_blockers.empty() && ironing_areas_offset > 0.)
+				polys = diff(polys, expand(painted_blockers, float(ironing_areas_offset)));
+			else if (! painted_blockers.empty())
+				polys = diff(polys, painted_blockers);
 			ironing_areas = intersection_ex(polys, offset(this->lslices, - ironing_areas_offset));
+			if (! painted_blockers.empty())
+				ironing_areas = ironing_areas_offset > 0.
+					? diff_ex(ironing_areas, expand(painted_blockers, float(ironing_areas_offset)))
+					: diff_ex(ironing_areas, painted_blockers);
 		}
 
         // Create the filler object.

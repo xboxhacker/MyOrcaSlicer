@@ -356,12 +356,14 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         is_msg_dlg_already_exist = false;
     }
 
-    bool have_arachne = config->opt_enum<PerimeterGeneratorType>("wall_generator") == PerimeterGeneratorType::Arachne;
+    // Staggered perimeters is now supported by both the Classic and Arachne wall generators, so the
+    // wall generator is no longer a prerequisite. The dialog still guards the remaining settings that
+    // would otherwise make the feature a silent no-op or produce poor results (matching layer height /
+    // line width, and not running while in spiral/vase mode).
 	if (!is_plate_config &&
         config->opt_bool("staggered_perimeters") &&
         (abs(config->opt_float("initial_layer_print_height") - config->opt_float("layer_height")) > EPSILON  ||
         !(*config->option<ConfigOptionFloatOrPercent>("top_surface_line_width") == *config->option<ConfigOptionFloatOrPercent>("outer_wall_line_width")) ||
-            !have_arachne ||
             config->opt_bool("spiral_mode")))
     {
         DynamicPrintConfig new_conf = *config;
@@ -370,7 +372,6 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         if (answer == wxID_YES) {
             new_conf.set_key_value("initial_layer_print_height", config->option<ConfigOptionFloat>("layer_height")->clone());
             new_conf.set_key_value("top_surface_line_width", config->option<ConfigOptionFloatOrPercent>("outer_wall_line_width")->clone() );
-            new_conf.set_key_value("wall_generator", new ConfigOptionEnum<PerimeterGeneratorType>(PerimeterGeneratorType::Arachne));
             new_conf.set_key_value("spiral_mode", new ConfigOptionBool(false));
         }
         else {
@@ -550,7 +551,7 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         is_msg_dlg_already_exist = false;
     }
 
-    // bool have_arachne = config->opt_enum<PerimeterGeneratorType>("wall_generator") == PerimeterGeneratorType::Arachne;
+    bool have_arachne = config->opt_enum<PerimeterGeneratorType>("wall_generator") == PerimeterGeneratorType::Arachne;
     if (config->opt_enum<FuzzySkinMode>("fuzzy_skin_mode") != FuzzySkinMode::Displacement && !have_arachne) {
         wxString msg_text = _(L("Both [Extrusion] and [Combined] modes of Fuzzy Skin require the Arachne Wall Generator to be enabled."));
         msg_text += "\n\n" + _(L("Change these settings automatically?\n"
@@ -623,22 +624,38 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
         toggle_line(el, _wall_sequence == WallSequence::OddEven);
 
     bool have_infill = config->option<ConfigOptionPercent>("sparse_infill_density")->value > 0;
+    const bool progressive_on = config->option("progressive_infill") && config->opt_bool("progressive_infill");
+    InfillPattern pattern = config->opt_enum<InfillPattern>("sparse_infill_pattern");
+    const bool progressive_supported = infill_pattern_supports_progressive(pattern);
+    if (progressive_on && progressive_supported) {
+        if (auto *d0 = config->option<ConfigOptionPercent>("progressive_infill_density_bottom"); d0 && d0->value > 0)
+            have_infill = true;
+        if (auto *d1 = config->option<ConfigOptionPercent>("progressive_infill_density_top"); d1 && d1->value > 0)
+            have_infill = true;
+    }
     // sparse_infill_filament uses the same logic as in Print::extruders()
     for (auto el : { "sparse_infill_pattern", "infill_combination", "fill_multiline","infill_direction",
         "minimum_sparse_infill_area", "sparse_infill_filament", "infill_anchor", "infill_anchor_max","infill_shift_step","sparse_infill_rotate_template","symmetric_infill_y_axis"})
         toggle_line(el, have_infill);
 
-    bool have_combined_infill = config->opt_bool("infill_combination") && have_infill;
+    bool have_combined_infill = config->opt_bool("infill_combination") && have_infill && !progressive_on;
     toggle_line("infill_combination_max_layer_height", have_combined_infill);
+    if (progressive_on && progressive_supported)
+        toggle_field("infill_combination", false);
 
     // Infill patterns that support multiline infill.
-    InfillPattern pattern = config->opt_enum<InfillPattern>("sparse_infill_pattern");
     bool          have_multiline_infill_pattern = pattern == ipGyroid || pattern == ipGrid || pattern == ipRectilinear || pattern == ipTpmsD || pattern == ipTpmsFK || pattern == ipCrossHatch || pattern == ipHoneycomb || pattern == ipLateralLattice || pattern == ipLateralHoneycomb || pattern == ipConcentric ||
                                                   pattern == ipCubic || pattern == ipStars || pattern == ipAlignedRectilinear || pattern == ipLightning || pattern == ip3DHoneycomb || pattern == ipAdaptiveCubic || pattern == ipSupportCubic|| pattern == ipTriangles || pattern == ipQuarterCubic|| pattern == ipArchimedeanChords || pattern == ipHilbertCurve || pattern == ipOctagramSpiral;
 
     // gyroid_optimized only applies when the sparse infill pattern is gyroid;
     // hide the whole line otherwise.
     toggle_line("gyroid_optimized", have_infill && pattern == ipGyroid);
+
+    toggle_line("progressive_infill", have_infill || progressive_on);
+    toggle_line("progressive_infill_start_height", progressive_on && progressive_supported);
+    toggle_line("progressive_infill_density_bottom", progressive_on && progressive_supported);
+    toggle_line("progressive_infill_density_top", progressive_on && progressive_supported);
+    toggle_line("progressive_infill_step", progressive_on && progressive_supported);
 
     // If there is infill, enable/disable fill_multiline according to whether the pattern supports multiline infill.
     if (have_infill) {
@@ -831,11 +848,15 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
                  have_support_material && ((!support_is_normal_tree || support_style == smsTreeHybrid) || have_raft));
 
     bool has_ironing = (config->opt_enum<IroningType>("ironing_type") != IroningType::NoIroning);
-    for (auto el : { "ironing_pattern", "ironing_flow", "ironing_spacing", "ironing_angle", "ironing_inset", "ironing_angle_fixed" })
+    for (auto el : { "ironing_pattern", "ironing_flow", "ironing_spacing", "ironing_angle", "ironing_inset", "ironing_angle_fixed",
+                     "ironing_small_area_flow_compensation" })
         toggle_line(el, has_ironing);
     bool has_rectilinear_ironing = (config->opt_enum<InfillPattern>("ironing_pattern") == InfillPattern::ipRectilinear);
     for (auto el : {"ironing_angle", "ironing_angle_fixed"})
         toggle_field(el, has_ironing && has_rectilinear_ironing);
+    const bool has_ironing_safc = has_ironing && config->option("ironing_small_area_flow_compensation")
+        && config->opt_bool("ironing_small_area_flow_compensation");
+    toggle_line("ironing_small_area_flow_compensation_model", has_ironing_safc);
     
     toggle_line("ironing_speed", has_ironing || has_support_ironing);
 
@@ -900,6 +921,9 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
     bool has_set_other_flow_ratios = config->opt_bool("set_other_flow_ratios");
     for (auto el : {"first_layer_flow_ratio", "outer_wall_flow_ratio", "inner_wall_flow_ratio", "overhang_flow_ratio", "sparse_infill_flow_ratio", "internal_solid_infill_flow_ratio", "gap_fill_flow_ratio", "support_flow_ratio", "support_interface_flow_ratio"})
         toggle_line(el, has_set_other_flow_ratios);
+
+    const bool inner_wall_short_path_flow = config->opt_float("inner_wall_short_path_max_length") > EPSILON;
+    toggle_line("inner_wall_short_path_flow_ratio", inner_wall_short_path_flow);
 
     bool has_overhang_speed = config->opt_bool("enable_overhang_speed");
     for (auto el : {"overhang_1_4_speed", "overhang_2_4_speed", "overhang_3_4_speed", "overhang_4_4_speed"})
@@ -1111,7 +1135,7 @@ int ConfigManipulation::show_spiral_mode_settings_dialog(bool is_object_config)
 
 int ConfigManipulation::show_staggered_perimeter_settings_dialog()
 {
-    wxString msg_text = _(L("Staggered perimeters is an experimental feature and only works when the First layer height is the same as Layer height, Top surface line width is the same as Outer wall line width and only for Arachne"));
+    wxString msg_text = _(L("Staggered perimeters is an experimental feature and works best when the First layer height is the same as Layer height and the Top surface line width is the same as the Outer wall line width. It is not compatible with Spiral vase mode."));
 			msg_text += "\n\n" + _(L("Change these settings automatically? \n"
 				"Yes - Change these settings and enable staggered perimeters\n"
 				"No  - Give up using staggered perimeters this time"));

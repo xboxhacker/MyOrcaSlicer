@@ -696,9 +696,42 @@ void PrintObject::infill()
     }
 }
 
+static void project_ironing_facets(const PrintObject &object, EnforcerBlockerType type, std::vector<Polygons> &out)
+{
+    out.clear();
+    for (const ModelVolume* mv : object.model_object()->volumes)
+        if (mv->is_model_part()) {
+            const indexed_triangle_set custom_facets = mv->ironing_facets.get_facets_strict(*mv, type);
+            if (custom_facets.indices.empty())
+                continue;
+            std::vector<Polygons> projected;
+            // Project upward-facing paint onto the same layer that irons that top:
+            // a face between slice planes is assigned to the layer whose slice_z is below it.
+            // Using print_z would drop a top that sits slightly below print_z onto the previous layer.
+            slice_mesh_slabs(custom_facets, zs_from_layers(object.layers()), object.trafo_centered() * mv->get_matrix(),
+                &projected, nullptr, nullptr, [](){});
+            if (out.empty())
+                out = std::move(projected);
+            else {
+                assert(out.size() == projected.size());
+                for (size_t i = 0; i < out.size(); ++ i)
+                    append(out[i], std::move(projected[i]));
+            }
+        }
+    for (Polygons &layer_polys : out)
+        layer_polys = union_(layer_polys);
+}
+
 void PrintObject::ironing()
 {
     if (this->set_started(posIroning)) {
+        m_painted_ironing.clear();
+        m_painted_ironing_blockers.clear();
+        if (this->model_object()->is_ironing_painted()) {
+            project_ironing_facets(*this, EnforcerBlockerType::ENFORCER, m_painted_ironing);
+            project_ironing_facets(*this, EnforcerBlockerType::BLOCKER, m_painted_ironing_blockers);
+        }
+
         BOOST_LOG_TRIVIAL(debug) << "Ironing in parallel - start";
         tbb::parallel_for(
             // Ironing starting with layer 0 to support ironing all surfaces.
@@ -1115,7 +1148,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "wipe_speed") {
             steps.emplace_back(posPerimeters);
         } else if (
-            opt_key == "small_area_infill_flow_compensation_model") {
+            opt_key == "small_area_infill_flow_compensation_model"
+            || opt_key == "ironing_small_area_flow_compensation_model") {
             steps.emplace_back(posSlice);
         } else if (opt_key == "gap_infill_speed"
             || opt_key == "filter_out_gap_fill" ) {
@@ -1189,6 +1223,7 @@ bool PrintObject::invalidate_state_by_config_options(
         	   opt_key == "support_type"
             || opt_key == "support_angle"
             || opt_key == "support_on_build_plate_only"
+            || opt_key == "support_blocker_strict"
             || opt_key == "support_critical_regions_only"
             || opt_key == "support_remove_small_overhang"
             || opt_key == "enforce_support_layers"
@@ -1293,6 +1328,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "bottom_surface_density"
             || opt_key == "initial_layer_line_width"
             || opt_key == "small_area_infill_flow_compensation"
+            || opt_key == "ironing_small_area_flow_compensation"
             || opt_key == "lateral_lattice_angle_1"
             || opt_key == "lateral_lattice_angle_2"
             || opt_key == "infill_overhang_angle") {
@@ -1307,15 +1343,25 @@ bool PrintObject::invalidate_state_by_config_options(
                    || opt_key == "infill_lock_depth"
                    || opt_key == "skin_infill_depth") {
             steps.emplace_back(posPrepareInfill);
-        } else if (opt_key == "sparse_infill_density") {
+        } else if (opt_key == "progressive_infill") {
+            // Bool toggle: do not treat as ConfigOptionPercent (that null-derefs in Release).
+            steps.emplace_back(posPerimeters);
+            steps.emplace_back(posPrepareInfill);
+        } else if (opt_key == "progressive_infill_start_height"
+                || opt_key == "progressive_infill_step") {
+            steps.emplace_back(posPrepareInfill);
+        } else if (opt_key == "sparse_infill_density"
+                || opt_key == "progressive_infill_density_bottom"
+                || opt_key == "progressive_infill_density_top") {
             // One likely wants to reslice only when switching between zero infill to simulate boolean difference (subtracting volumes),
             // normal infill and 100% (solid) infill.
             const auto *old_density = old_config.option<ConfigOptionPercent>(opt_key);
             const auto *new_density = new_config.option<ConfigOptionPercent>(opt_key);
             assert(old_density && new_density);
             //FIXME Vojtech is not quite sure about the 100% here, maybe it is not needed.
-            if (is_approx(old_density->value, 0.) || is_approx(old_density->value, 100.) ||
-                is_approx(new_density->value, 0.) || is_approx(new_density->value, 100.))
+            if (old_density && new_density &&
+                (is_approx(old_density->value, 0.) || is_approx(old_density->value, 100.) ||
+                 is_approx(new_density->value, 0.) || is_approx(new_density->value, 100.)))
                 steps.emplace_back(posPerimeters);
             steps.emplace_back(posPrepareInfill);
         } else if (opt_key == "internal_solid_infill_line_width") {
@@ -1402,6 +1448,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "outer_wall_flow_ratio"
             || opt_key == "inner_wall_flow_ratio"
             || opt_key == "staggered_perimeter_flow_ratio"
+            || opt_key == "inner_wall_short_path_max_length"
+            || opt_key == "inner_wall_short_path_flow_ratio"
             || opt_key == "overhang_flow_ratio"
             || opt_key == "sparse_infill_flow_ratio"
             || opt_key == "internal_solid_infill_flow_ratio"
@@ -1414,6 +1462,20 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "spiral_starting_flow_ratio"
             || opt_key == "spiral_finishing_flow_ratio") {
             invalidated |= m_print->invalidate_step(psGCodeExport);
+        } else if (
+               opt_key == "ironing_type"
+            || opt_key == "ironing_pattern"
+            || opt_key == "ironing_flow"
+            || opt_key == "ironing_spacing"
+            || opt_key == "ironing_inset"
+            || opt_key == "ironing_speed"
+            || opt_key == "ironing_angle"
+            || opt_key == "ironing_angle_fixed"
+            || opt_key == "filament_ironing_flow"
+            || opt_key == "filament_ironing_spacing"
+            || opt_key == "filament_ironing_inset"
+            || opt_key == "filament_ironing_speed") {
+            steps.emplace_back(posIroning);
         } else if (
                opt_key == "flush_into_infill"
             || opt_key == "flush_into_objects"
@@ -1834,7 +1896,7 @@ void PrintObject::process_external_surfaces()
     // over voids, which are supported by the layer below.
     bool 				  has_voids = false;
 	for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id)
-		if (this->printing_region(region_id).config().sparse_infill_density == 0) {
+		if (sparse_infill_max_density(this->printing_region(region_id).config()) == 0) {
 			has_voids = true;
 			break;
 		}
@@ -1872,7 +1934,7 @@ void PrintObject::process_external_surfaces()
 		                m_print->throw_if_canceled();
 		                Polygons voids;
 		                for (const LayerRegion *layerm : m_layers[layer_idx]->regions()) {
-		                	if (layerm->region().config().sparse_infill_density.value == 0.)
+		                	if (sparse_infill_max_density(layerm->region().config()) == 0.)
 		                		for (const Surface &surface : layerm->fill_surfaces.surfaces)
 		                			// Shrink the holes, let the layer above expand slightly inside the unsupported areas.
 		                			polygons_append(voids, offset(surface.expolygon, unsupported_width));
@@ -3458,6 +3520,17 @@ PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &defau
         config.sparse_infill_density.value = 0;
     else
         config.sparse_infill_density.value = std::min(config.sparse_infill_density.value, 100.);
+    auto clamp_percent = [](ConfigOptionPercent &opt) {
+        if (opt.value < 0.00011f)
+            opt.value = 0;
+        else
+            opt.value = std::min(opt.value, 100.);
+    };
+    clamp_percent(config.progressive_infill_density_bottom);
+    clamp_percent(config.progressive_infill_density_top);
+    clamp_percent(config.progressive_infill_step);
+    if (config.progressive_infill_start_height.value < 0.)
+        config.progressive_infill_start_height.value = 0.;
     if (config.fuzzy_skin.value != FuzzySkinType::None && (config.fuzzy_skin_point_distance.value < 0.01 || config.fuzzy_skin_thickness.value < 0.001))
         config.fuzzy_skin.value = FuzzySkinType::None;
     return config;
@@ -3623,7 +3696,7 @@ void PrintObject::clip_fill_surfaces()
         return;
     bool has_infill = false;
     for (size_t i = 0; i < this->num_printing_regions(); ++ i)
-        if (this->printing_region(i).config().sparse_infill_density > 0) {
+        if (sparse_infill_max_density(this->printing_region(i).config()) > 0) {
             has_infill = true;
             break;
         }
@@ -3683,7 +3756,7 @@ void PrintObject::clip_fill_surfaces()
             lower_layer_internal_surfaces);
         // Apply new internal infill to regions.
         for (LayerRegion *layerm : lower_layer->m_regions) {
-            if (layerm->region().config().sparse_infill_density.value == 0)
+            if (sparse_infill_max_density(layerm->region().config()) == 0)
                 continue;
             Polygons internal;
             for (Surface &surface : layerm->fill_surfaces.surfaces)
@@ -3797,7 +3870,7 @@ void PrintObject::discover_horizontal_shells()
                         
                         // Orca: Also use the same strategy if the user has selected to further reduce
                         // the amount of solid infill on walls.
-                        if (region_config.sparse_infill_density.value == 0 || region_config.ensure_vertical_shell_thickness.value == evstCriticalOnly || region_config.ensure_vertical_shell_thickness.value == evstNone) {
+                        if (sparse_infill_max_density(region_config) == 0 || region_config.ensure_vertical_shell_thickness.value == evstCriticalOnly || region_config.ensure_vertical_shell_thickness.value == evstNone) {
                             // If user expects the object to be void (for example a hollow sloping vase),
                             // don't continue the search. In this case, we only generate the external solid
                             // shell if the object would otherwise show a hole (gap between perimeters of
@@ -3811,7 +3884,7 @@ void PrintObject::discover_horizontal_shells()
                     }
 
                     float factor = 0.0f;
-                    if (region_config.sparse_infill_density.value == 0)
+                    if (sparse_infill_max_density(region_config) == 0)
                         factor = 1.0f;
                     else if (region_config.ensure_vertical_shell_thickness.value == evstNone)
                         factor = 0.5f;
@@ -3921,7 +3994,8 @@ void PrintObject::combine_infill()
         const PrintRegion &region = this->printing_region(region_id);
         //BBS
         const bool enable_combine_infill = region.config().infill_combination.value;
-        if (enable_combine_infill == false || region.config().sparse_infill_density == 0.)
+        if (enable_combine_infill == false || sparse_infill_max_density(region.config()) == 0.
+            || progressive_infill_active(region.config()))
             continue;
 
         // Support internal solid infill when sparse_infill_density is 100%
@@ -4424,7 +4498,24 @@ void PrintObject::project_and_append_custom_facets(
         }
 }
 
-const Layer* PrintObject::get_layer_at_printz(coordf_t print_z) const {
+const Polygons& PrintObject::painted_ironing_polygons(size_t layer_id) const
+{
+    static const Polygons empty;
+    if (layer_id >= m_painted_ironing.size())
+        return empty;
+    return m_painted_ironing[layer_id];
+}
+
+const Polygons& PrintObject::painted_ironing_blockers(size_t layer_id) const
+{
+    static const Polygons empty;
+    if (layer_id >= m_painted_ironing_blockers.size())
+        return empty;
+    return m_painted_ironing_blockers[layer_id];
+}
+
+const Layer* PrintObject::get_layer_at_printz(coordf_t print_z) const
+{
     auto it = Slic3r::lower_bound_by_predicate(m_layers.begin(), m_layers.end(), [print_z](const Layer *layer) { return layer->print_z < print_z; });
     return (it == m_layers.end() || (*it)->print_z != print_z) ? nullptr : *it;
 }

@@ -547,7 +547,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     Surfaces tops = expand_merge_surfaces(this->fill_surfaces.surfaces, stTop, expansion_zones, closing_radius);
 
     // turn too small internal regions into solid regions according to the user setting
-    if (!this->layer()->object()->print()->config().spiral_mode && this->region().config().sparse_infill_density.value > 0) {
+    if (!this->layer()->object()->print()->config().spiral_mode && sparse_infill_max_density(this->region().config()) > 0) {
         // scaling an area requires two calls!
         double min_area = scale_(scale_(this->region().config().minimum_sparse_infill_area.value));
         ExPolygons small_regions{};
@@ -596,7 +596,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
 
 void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Polygons *lower_layer_covered)
 {
-    const bool      has_infill = this->region().config().sparse_infill_density.value > 0.;
+    const bool      has_infill = sparse_infill_max_density(this->region().config()) > 0.;
     //BBS
     auto nozzle_diameter = this->region().nozzle_dmr_avg(this->layer()->object()->print()->config());
     const float margin = float(scale_(EXTERNAL_INFILL_MARGIN));
@@ -913,7 +913,8 @@ void LayerRegion::prepare_fill_surfaces()
                 surface.surface_type = stInternal;
     }
 
-    if (!spiral_mode && fabs(this->region().config().sparse_infill_density.value - 100.) < EPSILON) {
+    if (!spiral_mode && !progressive_infill_active(this->region().config()) &&
+        fabs(this->region().config().sparse_infill_density.value - 100.) < EPSILON) {
         // Turn all internal sparse infill into solid infill, if sparse_infill_density is 100%
         for (Surface &surface : this->fill_surfaces.surfaces)
             if (surface.surface_type == stInternal)

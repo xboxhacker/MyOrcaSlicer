@@ -2037,6 +2037,13 @@ void TreeSupport::draw_circles()
         return;
     BOOST_LOG_TRIVIAL(info) << "draw_circles for object: " << m_object->model_object()->name;
 
+    // Strict support blockers. Sliced once here and applied to the drawn areas below.
+    std::vector<Polygons> strict_blockers;
+    if (m_object_config->support_blocker_strict.value) {
+        strict_blockers = m_object->slice_support_blockers();
+        m_object->project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, strict_blockers);
+    }
+
     tbb::parallel_for(tbb::blocked_range<size_t>(0, m_ts_data->layer_heights.size()),
         [&](const tbb::blocked_range<size_t>& range)
         {
@@ -2372,6 +2379,17 @@ void TreeSupport::draw_circles()
                             expanded_base_areas.emplace_back(expoly);
                     }
                     ts_layer->base_areas = std::move(expanded_base_areas);
+                }
+
+                // Strict support blockers: a blocker is a no-go volume for the branches, the trunk
+                // and the base alike, not just for overhang detection. Applied before area_groups
+                // takes pointers into these vectors.
+                if (obj_layer_nr < strict_blockers.size() && ! strict_blockers[obj_layer_nr].empty()) {
+                    const Polygons &blocker = strict_blockers[obj_layer_nr];
+                    for (ExPolygons *areas : { &ts_layer->base_areas, &ts_layer->roof_areas, &ts_layer->roof_1st_layer,
+                                               &ts_layer->floor_areas, &ts_layer->roof_gap_areas })
+                        if (! areas->empty())
+                            *areas = diff_ex(*areas, blocker);
                 }
 
                 auto &area_groups = ts_layer->area_groups;
@@ -3661,6 +3679,10 @@ TreeSupportData::TreeSupportData(const PrintObject &object, coordf_t xy_distance
     : m_xy_distance(xy_distance), m_radius_sample_resolution(radius_sample_resolution)
 {
     branch_scale_factor = tan(object.config().tree_support_branch_angle.value * M_PI / 180.);
+    if (object.config().support_blocker_strict.value) {
+        m_blockers = object.slice_support_blockers();
+        object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, m_blockers);
+    }
     clear_nodes();
     m_max_move_distances.resize(object.layers().size(), 0);
     for (std::size_t layer_nr  = 0; layer_nr < object.layers().size(); ++layer_nr)
@@ -3759,6 +3781,15 @@ const ExPolygons& TreeSupportData::calculate_collision(const RadiusLayerPair& ke
     assert(key.layer_nr < m_layer_outlines.size());
 
     ExPolygons collision_areas = offset_ex(m_layer_outlines[key.layer_nr], scale_(key.radius+m_xy_distance));
+    // Strict support blockers are obstacles for the branches. Since the avoidance areas are built up
+    // from the collision areas layer by layer, this both steers branches around a blocker and keeps a
+    // branch from ever being placed where it could not reach the plate - rather than letting it grow
+    // down into the blocker and be cut off afterwards, leaving it hanging. Inflated by the branch
+    // radius only: a blocker is not a physical part that needs xy clearance.
+    if (key.layer_nr < m_blockers.size() && ! m_blockers[key.layer_nr].empty()) {
+        append(collision_areas, offset_ex(union_ex(m_blockers[key.layer_nr]), scale_(key.radius)));
+        collision_areas = union_ex(collision_areas);
+    }
     collision_areas = expolygons_simplify(collision_areas, scale_(m_radius_sample_resolution));
     // collision_areas.emplace_back(m_machine_border);
     const auto ret = m_collision_cache.insert({ key, std::move(collision_areas) });

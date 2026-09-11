@@ -2353,6 +2353,12 @@ void TabPrint::build()
         optgroup->append_single_option_line("ironing_inset", "quality_settings_ironing#inset");
         optgroup->append_single_option_line("ironing_angle", "quality_settings_ironing#angle-offset");
         optgroup->append_single_option_line("ironing_angle_fixed", "quality_settings_ironing#fixed-angle");
+        optgroup->append_single_option_line("ironing_small_area_flow_compensation", "quality_settings_ironing");
+        Option ironing_safc_model = optgroup->get_option("ironing_small_area_flow_compensation_model");
+        ironing_safc_model.opt.full_width = true;
+        ironing_safc_model.opt.is_code = true;
+        ironing_safc_model.opt.height = 15;
+        optgroup->append_single_option_line(ironing_safc_model, "quality_settings_ironing");
 
         optgroup = page->new_optgroup("Z Contouring", L"param_advanced");
         optgroup->append_single_option_line("zaa_enabled", "quality_settings_z_contouring");
@@ -2390,6 +2396,8 @@ void TabPrint::build()
         optgroup->append_single_option_line("first_layer_flow_ratio", "quality_settings_wall_and_surfaces#surface-flow-ratio");
         optgroup->append_single_option_line("outer_wall_flow_ratio", "quality_settings_wall_and_surfaces#surface-flow-ratio");
         optgroup->append_single_option_line("inner_wall_flow_ratio", "quality_settings_wall_and_surfaces#surface-flow-ratio");
+        optgroup->append_single_option_line("inner_wall_short_path_max_length", "quality_settings_wall_and_surfaces#inner-wall-short-path-flow");
+        optgroup->append_single_option_line("inner_wall_short_path_flow_ratio", "quality_settings_wall_and_surfaces#inner-wall-short-path-flow");
         optgroup->append_single_option_line("overhang_flow_ratio", "quality_settings_wall_and_surfaces#surface-flow-ratio");
         optgroup->append_single_option_line("sparse_infill_flow_ratio", "quality_settings_wall_and_surfaces#surface-flow-ratio");
         optgroup->append_single_option_line("internal_solid_infill_flow_ratio", "quality_settings_wall_and_surfaces#surface-flow-ratio");
@@ -2452,6 +2460,11 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Infill"), L"param_infill");
         optgroup->append_single_option_line("sparse_infill_density", "strength_settings_infill#sparse-infill-density");
+        optgroup->append_single_option_line("progressive_infill", "strength_settings_infill#sparse-infill-density");
+        optgroup->append_single_option_line("progressive_infill_start_height", "strength_settings_infill#sparse-infill-density");
+        optgroup->append_single_option_line("progressive_infill_density_bottom", "strength_settings_infill#sparse-infill-density");
+        optgroup->append_single_option_line("progressive_infill_density_top", "strength_settings_infill#sparse-infill-density");
+        optgroup->append_single_option_line("progressive_infill_step", "strength_settings_infill#sparse-infill-density");
         optgroup->append_single_option_line("fill_multiline", "strength_settings_infill#fill-multiline");
         optgroup->append_single_option_line("sparse_infill_pattern", "strength_settings_infill#sparse-infill-pattern");
         optgroup->append_single_option_line("gyroid_optimized", "strength_settings_patterns#gyroid_optimized");
@@ -2566,6 +2579,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("raft_first_layer_density", "support_settings_support#initial-layer-density");
         optgroup->append_single_option_line("raft_first_layer_expansion", "support_settings_support#initial-layer-expansion");
         optgroup->append_single_option_line("support_on_build_plate_only", "support_settings_support#on-build-plate-only");
+        optgroup->append_single_option_line("support_blocker_strict", "support_settings_support#strict-support-blockers");
         optgroup->append_single_option_line("support_critical_regions_only", "support_settings_support#support-critical-regions-only");
         optgroup->append_single_option_line("support_remove_small_overhang", "support_settings_support#ignore-small-overhangs");
         //optgroup->append_single_option_line("enforce_support_layers", "support_settings_support");
@@ -5156,6 +5170,7 @@ if (is_marlin_flavor)
             optgroup->append_single_option_line("deretraction_speed", "printer_extruder_retraction#deretraction-speed", extruder_idx);
             optgroup->append_single_option_line("retraction_minimum_travel", "printer_extruder_retraction#travel-distance-threshold", extruder_idx);
             optgroup->append_single_option_line("restart_extra_minimum_travel", "printer_extruder_retraction#restart-extra-travel-distance-threshold", extruder_idx);
+            optgroup->append_single_option_line("no_restart_extra_on_inner_gap_sparse", "printer_extruder_retraction#no-restart-extra-inner-gap-sparse-infill", extruder_idx);
             optgroup->append_single_option_line("retract_when_changing_layer", "printer_extruder_retraction#retract-on-layer-change", extruder_idx);
             optgroup->append_single_option_line("wipe", "printer_extruder_retraction#wipe-while-retracting", extruder_idx);
             optgroup->append_single_option_line("wipe_distance", "printer_extruder_retraction#wipe-distance", extruder_idx);
@@ -5168,6 +5183,7 @@ if (is_marlin_flavor)
             optgroup->append_single_option_line("travel_slope", "printer_extruder_z_hop#traveling-angle", extruder_idx);
             optgroup->append_single_option_line("retract_lift_above", "printer_extruder_z_hop#only-lift-z-above", extruder_idx);
             optgroup->append_single_option_line("retract_lift_below", "printer_extruder_z_hop#only-lift-z-below", extruder_idx);
+            optgroup->append_single_option_line("retract_lift_settle_time", "printer_extruder_z_hop#settle-time", extruder_idx);
 
             optgroup = page->new_optgroup(L("Retraction when switching material"), L"param_retraction_material_change");
             optgroup->append_single_option_line("retract_length_toolchange", "printer_extruder_retraction#retraction-when-switching-materials", extruder_idx);
@@ -5548,6 +5564,7 @@ void TabPrinter::toggle_options()
         // firmware retraction
         toggle_option("retraction_minimum_travel", have_retract_length || use_firmware_retraction, i);
         toggle_option("restart_extra_minimum_travel", have_retract_length || use_firmware_retraction, i);
+        toggle_option("no_restart_extra_on_inner_gap_sparse", have_retract_length || use_firmware_retraction, i);
 
         // user can customize other retraction options if retraction is enabled
         //BBS
@@ -5558,14 +5575,14 @@ void TabPrinter::toggle_options()
 
         // retract lift above / below + enforce only applies if using retract lift
         vec.resize(0);
-        vec = {"retract_lift_above", "retract_lift_below", "retract_lift_enforce"};
+        vec = {"retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retract_lift_settle_time"};
         for (auto el : vec)
           toggle_option(el, retraction && (m_config->opt_float("z_hop", i) > 0), i);
 
         // some options only apply when not using firmware retraction
         vec.resize(0);
         vec = {"retraction_speed", "deretraction_speed", "retract_before_wipe", "retract_after_wipe",
-               "retract_length", "retract_restart_extra", "restart_extra_minimum_travel", "wipe", "wipe_distance"};
+               "retract_length", "retract_restart_extra", "restart_extra_minimum_travel", "no_restart_extra_on_inner_gap_sparse", "wipe", "wipe_distance"};
         for (auto el : vec)
             //BBS
             toggle_option(el, retraction && !use_firmware_retraction, i);

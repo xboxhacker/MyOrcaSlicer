@@ -208,7 +208,7 @@ static t_config_enum_values s_keys_map_NoiseType {
     { "perlin",         int(NoiseType::Perlin) },
     { "billow",         int(NoiseType::Billow) },
     { "ridgedmulti",    int(NoiseType::RidgedMulti) },
-    { "voronoi",        int(NoiseType::Voronoi) }, 
+    { "voronoi",        int(NoiseType::Voronoi) },
     { "ripple",         int(NoiseType::Ripple) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NoiseType)
@@ -262,7 +262,8 @@ static t_config_enum_values s_keys_map_IroningType {
     { "no ironing",     int(IroningType::NoIroning) },
     { "top",            int(IroningType::TopSurfaces) },
     { "topmost",        int(IroningType::TopmostOnly) },
-    { "solid",          int(IroningType::AllSolid) }
+    { "solid",          int(IroningType::AllSolid) },
+    { "painted",        int(IroningType::Painted) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(IroningType)
 
@@ -1353,6 +1354,26 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(1));
 
+    def = this->add("inner_wall_short_path_max_length", coFloat);
+    def->label = L("Inner wall short path length threshold");
+    def->tooltip = L("If greater than zero, inner wall extrusion paths shorter than this length use the short path flow ratio below. "
+                     "Path length is the full inner wall polyline for that extrusion move (all segments in the move). "
+                     "Set to 0 to disable.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("inner_wall_short_path_flow_ratio", coFloat);
+    def->label = L("Inner wall short path flow ratio");
+    def->tooltip = L("Flow multiplier applied to inner wall paths shorter than the threshold above. "
+                     "Use values below 1 to reduce material buildup on short inner wall moves (for example 0.92 for 92% flow). "
+                     "Ignored when the length threshold is 0.");
+    def->min = 0;
+    def->max = 2;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(1.));
+
     def = this->add("overhang_flow_ratio", coFloat);
     def->label = L("Overhang flow ratio");
     def->category = L("Advanced");
@@ -1814,7 +1835,7 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Activate for better air filtration. G-code command: M106 P3 S(0-255)");
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionBools{false});
-    
+
 
     def = this->add("activate_air_filtration_during_print", coBools);
     def->full_label = L("During print");
@@ -2955,6 +2976,53 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->max = 100;
     def->set_default_value(new ConfigOptionPercent(20));
+
+    def = this->add("progressive_infill", coBool);
+    def->label = L("Progressive infill");
+    def->category = L("Strength");
+    def->tooltip = L("Gradually change sparse infill density from the start height to the last sparse infill layer. "
+                     "Below the start height, Sparse infill density is used. "
+                     "Bottom and top values are independent, so density may increase or decrease with height. "
+                     "Not used with Lightning, Adaptive Cubic, Support Cubic, 3D Honeycomb, or Locked Zag.");
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("progressive_infill_start_height", coFloat);
+    def->label = L("Progressive infill start height");
+    def->category = L("Strength");
+    def->tooltip = L("Height from the build plate where the density ramp begins. "
+                     "Layers below this height keep Sparse infill density. "
+                     "0 starts at the first sparse infill layer.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("progressive_infill_density_bottom", coPercent);
+    def->label = L("Progressive infill bottom");
+    def->category = L("Strength");
+    def->tooltip = L("Sparse infill density at the start height when Progressive infill is enabled.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->set_default_value(new ConfigOptionPercent(10));
+
+    def = this->add("progressive_infill_density_top", coPercent);
+    def->label = L("Progressive infill top");
+    def->category = L("Strength");
+    def->tooltip = L("Sparse infill density on the last sparse infill layer when Progressive infill is enabled.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->set_default_value(new ConfigOptionPercent(80));
+
+    def = this->add("progressive_infill_step", coPercent);
+    def->label = L("Progressive infill step");
+    def->category = L("Strength");
+    def->tooltip = L("How much sparse infill density jumps between height plateaus. "
+                     "0 changes density every layer. For example 10 holds 10%, then 20%, then 30%, and so on until the top density.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->set_default_value(new ConfigOptionPercent(0));
 
     def           = this->add("align_infill_direction_to_model", coBool);
     def->label    = L("Align infill direction to model");
@@ -4165,7 +4233,7 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("Interlocking depth of a segmented region. It will be ignored if "
                     "\"mmu_segmented_region_max_width\" is zero or if \"mmu_segmented_region_interlocking_depth\" "
                     "is bigger than \"mmu_segmented_region_max_width\". Zero disables this feature.");
-    def->sidetext = L("mm");	// millimeters, CIS languages need translation 
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min      = 0;
     def->category = L("Advanced");
     def->mode     = comAdvanced;
@@ -4230,16 +4298,21 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Ironing Type");
     def->category = L("Quality");
     def->tooltip = L("Ironing is using small flow to print on same height of surface again to make flat surface more smooth. "
-                     "This setting controls which layer being ironed.");
+                     "This setting controls which layer being ironed.\n\n"
+                     "Painted ironing irons all top surfaces, except areas blocked with the paint-on ironing tool (right click / red). "
+                     "Left click (green) adds extra surfaces to iron. "
+                     "Speed, flow, spacing, pattern and direction are the same as for top-surface ironing.");
     def->enum_keys_map = &ConfigOptionEnum<IroningType>::get_enum_values();
     def->enum_values.push_back("no ironing");
     def->enum_values.push_back("top");
     def->enum_values.push_back("topmost");
     def->enum_values.push_back("solid");
+    def->enum_values.push_back("painted");
     def->enum_labels.push_back(L("No ironing"));
     def->enum_labels.push_back(L("Top surfaces"));
     def->enum_labels.push_back(L("Topmost surface"));
     def->enum_labels.push_back(L("All solid layers"));
+    def->enum_labels.push_back(L("Painted ironing"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<IroningType>(IroningType::NoIroning));
 
@@ -4311,6 +4384,16 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Use a fixed absolute angle for ironing.");
     def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("ironing_small_area_flow_compensation", coBool);
+    def->label = L("Ironing small area flow compensation");
+    def->category = L("Quality");
+    def->tooltip = L("Reduce ironing flow on short hatch lines so tiny islands do not blob. "
+                     "Connecting moves shorter than about 0.5 mm are left unchanged. "
+                     "Uses a separate model from infill Small area flow compensation. "
+                     "This does not even out gloss on a large face with mixed hatch lengths.");
+    def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
     def           = this->add("ironing_expansion", coFloat);
@@ -4437,6 +4520,34 @@ void PrintConfigDef::init_fff_params()
     def->full_width = true;
     def->height = 15;
     def->set_default_value(new ConfigOptionStrings{"0,0", "\n0.2,0.4444", "\n0.4,0.6145", "\n0.6,0.7059", "\n0.8,0.7619", "\n1.5,0.8571", "\n2,0.8889", "\n3,0.9231", "\n5,0.9520", "\n10,1"});
+
+    def = this->add("ironing_small_area_flow_compensation_model", coStrings);
+    def->label = L("Ironing flow compensation model");
+    def->tooltip = L(
+        "Length and flow factor pairs for ironing small area flow compensation. "
+        "Same format as infill Small area flow compensation. "
+        "The default curve is fitted to 0.8 mm nozzle ironing: full flow by 20 mm hatch length, "
+        "about 28% less flow on typical 3 mm islands. Connecting links are not compensated.");
+    def->mode = comAdvanced;
+    def->gui_flags = "serialized";
+    def->multiline = true;
+    def->full_width = true;
+    def->height = 15;
+    def->set_default_value(new ConfigOptionStrings{
+        "0,0",
+        "\n0.5,0.2857",
+        "\n1,0.4444",
+        "\n1.5,0.5455",
+        "\n2,0.6154",
+        "\n3,0.7059",
+        "\n4,0.7619",
+        "\n5,0.8",
+        "\n6,0.8276",
+        "\n8,0.8649",
+        "\n10,0.8889",
+        "\n12,0.9057",
+        "\n15,0.9231",
+        "\n20,1"});
 
     def = this->add("has_scarf_joint_seam", coBool);
     def->mode = comAdvanced;
@@ -5021,7 +5132,7 @@ void PrintConfigDef::init_fff_params()
     def->height = 5;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionString());
-    
+
     def = this->add("printer_model", coString);
     def->label = L("Printer type");
     def->tooltip = L("Type of the printer.");
@@ -5121,12 +5232,20 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloats { 2. });
 
     def = this->add("restart_extra_minimum_travel", coFloats);
-    def->label = L("Restart extra travel distance threshold");
-    def->tooltip = L("Only apply extra length on restart when the travel move since retraction is longer than this threshold. "
+    def->label = L("Restart extra minimum extrusion length");
+    def->tooltip = L("Only apply extra length on restart when the first extrusion segment after unretract "
+                     "(first line drawn) is at least this long. Shorter first segments still get a normal unretract without the extra amount. "
                      "Set to 0 to always apply extra length on restart.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats { 0. });
+
+    def = this->add("no_restart_extra_on_inner_gap_sparse", coBools);
+    def->label = L("No restart extra on inner wall, gap fill & sparse infill");
+    def->tooltip = L("If enabled, inner perimeters, gap fill, and sparse (internal) infill do not apply extra length on restart "
+                     "(they still unretract the normal retraction amount). Other features keep the configured restart extra.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBools { false });
 
     def = this->add("retract_before_wipe", coPercents);
     def->label = L("Retract amount before wipe");
@@ -5282,6 +5401,16 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Top and Bottom"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnumsGeneric{RetractLiftEnforceType ::rletAllSurfaces});
+
+    def             = this->add("retract_lift_settle_time", coFloats);
+    def->label      = L("Z-hop settle time");
+    def->tooltip    = L("After the nozzle returns from a Z-hop, wait this long before resuming printing to let the part settle. "
+                        "This is applied only before outer wall moves, so inner walls, infill and supports are not slowed down. "
+                        "It is intended to reduce ringing/wiggle artifacts caused by Z-hop on tall prints. Set to 0 to disable.");
+    def->sidetext   = L("ms");
+    def->mode       = comAdvanced;
+    def->min        = 0;
+    def->set_default_value(new ConfigOptionFloats{0.});
 
     def = this->add("extruder_type", coEnums);
     // internal use only, don't need translation
@@ -6045,6 +6174,20 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Support");
     def->tooltip = L("Don't create support on model surface, only on build plate.");
     def->mode = comSimple;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("support_blocker_strict", coBool);
+    def->label = L("Strict support blockers");
+    def->category = L("Support");
+    def->tooltip = L("Treat support blockers as absolute no-go volumes for every kind of support geometry.\n\n"
+                     "By default a blocker only removes the overhangs detected inside it, so support columns, "
+                     "tree branches and the support base can still be built through it on their way down to the plate. "
+                     "With this enabled, no support of any type is generated inside a blocker, which lets you confine "
+                     "where the support base is allowed to touch the build plate. Automatic overhang detection is "
+                     "unaffected. Raft layers are never clipped.\n\n"
+                     "Note that support which can find no unblocked path downwards is removed rather than rerouted, "
+                     "so an overhang whose only route to the plate is blocked will end up unsupported.");
+    def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
     // BBS
@@ -7268,8 +7411,8 @@ void PrintConfigDef::init_extruder_option_keys()
     m_extruder_option_keys = {
         "extruder_type", "nozzle_diameter", "default_nozzle_volume_type", "min_layer_height", "max_layer_height", "extruder_offset",
         "extruder_printable_height", "nozzle_volume", "nozzle_type", "nozzle_flush_dataset",
-        "retraction_length", "z_hop", "z_hop_types", "travel_slope", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retraction_speed", "deretraction_speed",
-        "retract_before_wipe", "retract_after_wipe", "retract_restart_extra", "retraction_minimum_travel", "restart_extra_minimum_travel", "wipe", "wipe_distance",
+        "retraction_length", "z_hop", "z_hop_types", "travel_slope", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retract_lift_settle_time", "retraction_speed", "deretraction_speed",
+        "retract_before_wipe", "retract_after_wipe", "retract_restart_extra", "retraction_minimum_travel", "restart_extra_minimum_travel", "no_restart_extra_on_inner_gap_sparse", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "extruder_colour",
         "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"
     };
@@ -7277,11 +7420,13 @@ void PrintConfigDef::init_extruder_option_keys()
     m_extruder_retract_keys = {
         "deretraction_speed",
         "long_retractions_when_cut",
+        "no_restart_extra_on_inner_gap_sparse",
         "retract_after_wipe",
         "retract_before_wipe",
         "retract_lift_above",
         "retract_lift_below",
         "retract_lift_enforce",
+        "retract_lift_settle_time",
         "retract_restart_extra",
         "retract_when_changing_layer",
         "retraction_distances_when_cut",
@@ -8357,11 +8502,13 @@ std::set<std::string> printer_options_with_variant_1 = {
     "retract_lift_above",
     "retract_lift_below",
     "retract_lift_enforce",
+    "retract_lift_settle_time",
     "z_hop_types",
     "retraction_speed",
     "deretraction_speed",
     "retraction_minimum_travel",
     "restart_extra_minimum_travel",
+    "no_restart_extra_on_inner_gap_sparse",
     "retract_when_changing_layer",
     "wipe",
     "wipe_distance",

@@ -380,6 +380,7 @@ public:
         TriangleSplittingData seam;
         TriangleSplittingData mmu;
         TriangleSplittingData fuzzy;
+        TriangleSplittingData ironing;
     };
 
     // Remap painting data from source mesh to target mesh using spatial mapping.

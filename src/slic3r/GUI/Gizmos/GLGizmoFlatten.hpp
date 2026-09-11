@@ -7,6 +7,7 @@
 
 namespace Slic3r {
 
+class ModelObject;
 enum class ModelVolumeType : int;
 
 
@@ -40,6 +41,9 @@ private:
 
     void update_planes();
     bool is_plane_update_necessary() const;
+    // Convex-hull picking planes can be a 3-point approximation of a slightly
+    // tessellated CAD face. Refine the rotation from the real mesh triangles.
+    static Vec3d refine_flatten_normal(const ModelObject *mo, const Vec3d &hull_normal);
 
 public:
     GLGizmoFlatten(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id);

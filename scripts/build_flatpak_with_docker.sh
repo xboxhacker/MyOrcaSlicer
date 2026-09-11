@@ -98,8 +98,8 @@ echo "  ccache:     enabled"
 echo ""
 
 # ---------- prepare manifest ----------
-MANIFEST_SRC="scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.yml"
-MANIFEST_DOCKER="scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.docker.yml"
+MANIFEST_SRC="scripts/flatpak/io.github.xboxhacker.OrcaSlicer.yml"
+MANIFEST_DOCKER="scripts/flatpak/io.github.xboxhacker.OrcaSlicer.docker.yml"
 # Ensure cleanup on exit (success or failure)
 trap 'rm -f "$PROJECT_ROOT/$MANIFEST_DOCKER"' EXIT
 
@@ -191,7 +191,7 @@ flatpak-builder $FORCE_CLEAN_FLAG \
     --arch="$BUILD_ARCH" \
     --repo=flatpak-repo \
     flatpak-build \
-    scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.docker.yml
+    scripts/flatpak/io.github.xboxhacker.OrcaSlicer.docker.yml
 builder_end=$(date +%s)
 builder_duration=$((builder_end - builder_start))
 
@@ -200,7 +200,7 @@ flatpak build-bundle \
     --arch="$BUILD_ARCH" \
     flatpak-repo \
     "$BUNDLE_NAME" \
-    io.github.nanashithenameless.OrcaSlicer
+    io.github.xboxhacker.OrcaSlicer
 bundle_end=$(date +%s)
 bundle_duration=$((bundle_end - bundle_start))
 

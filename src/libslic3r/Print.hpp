@@ -447,6 +447,9 @@ public:
 
     // Helpers to project custom facets on slices
     void project_and_append_custom_facets(bool seam, EnforcerBlockerType type, std::vector<Polygons>& expolys, std::vector<std::pair<Vec3f,Vec3f>>* vertical_points=nullptr) const;
+    // Upward-facing painted ironing facets, indexed by object layer.
+    const Polygons&             painted_ironing_polygons(size_t layer_id) const;
+    const Polygons&             painted_ironing_blockers(size_t layer_id) const;
 
     //BBS
     BoundingBox get_first_layer_bbox(float& area, float& layer_height, std::string& name);
@@ -557,6 +560,9 @@ private:
     SlicingParameters                       m_slicing_params;
     LayerPtrs                               m_layers;
     SupportLayerPtrs                        m_support_layers;
+    // Painted ironing enforcers / blockers per object layer.
+    std::vector<Polygons>                   m_painted_ironing;
+    std::vector<Polygons>                   m_painted_ironing_blockers;
     // BBS
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
 

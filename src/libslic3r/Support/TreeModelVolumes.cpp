@@ -94,6 +94,11 @@ TreeModelVolumes::TreeModelVolumes(
 #else
     {
         m_anti_overhang = print_object.slice_support_blockers();
+        m_strict_blockers = print_object.config().support_blocker_strict.value;
+        // Painted blockers only take part in the branch avoidance when they are meant to be strict;
+        // otherwise they keep their historical role of merely suppressing the overhangs inside them.
+        if (m_strict_blockers)
+            print_object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, m_anti_overhang);
         TreeSupportMeshGroupSettings mesh_settings(print_object);
         const TreeSupportSettings config{ mesh_settings, print_object.slicing_parameters() };
         m_current_min_xy_dist = config.xy_min_distance;
@@ -102,6 +107,13 @@ TreeModelVolumes::TreeModelVolumes(
         m_increase_until_radius = config.increase_radius_until_radius;
         m_radius_0 = config.getRadius(0);
         m_raft_layers = config.raft_layers;
+        // m_anti_overhang is sliced at the object layers, while the outlines and collision areas are
+        // indexed with the raft layers prepended. Shift it so both share one indexing; a blocker never
+        // applies to a raft layer. Only done in strict mode: the pre-existing consumer of this vector
+        // (the placable areas below) has always read it unshifted, and correcting that here would
+        // change support resting on the model for rafted prints that do not ask for strict blockers.
+        if (m_strict_blockers && ! m_anti_overhang.empty() && ! m_raft_layers.empty())
+            m_anti_overhang.insert(m_anti_overhang.begin(), m_raft_layers.size(), Polygons{});
         m_current_outline_idx = 0;
 
         m_layer_outlines.emplace_back(mesh_settings, std::vector<Polygons>{});
@@ -472,7 +484,8 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
             const bool processing_last_mesh = outline_idx == layer_outline_indices.size();
             tbb::parallel_for(tbb::blocked_range<LayerIndex>(data.begin(), data.end()),
                 [&collision_areas_offsetted, &outlines, &machine_border = m_machine_border, &anti_overhang = m_anti_overhang, radius, 
-                    xy_distance, z_distance_bottom_layers, z_distance_top_layers, min_resolution = m_min_resolution, &data, processing_last_mesh, &throw_on_cancel]
+                    xy_distance, z_distance_bottom_layers, z_distance_top_layers, min_resolution = m_min_resolution, &data, processing_last_mesh,
+                    strict_blockers = m_strict_blockers, &throw_on_cancel]
                 (const tbb::blocked_range<LayerIndex>& range) {
                     for (LayerIndex layer_idx = range.begin(); layer_idx != range.end(); ++ layer_idx) {
                         Polygons collisions;
@@ -517,7 +530,12 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
                                     // not support an overhang<90 degree than to risk fusing to it.
                                 append(collisions, offset(union_ex(collision_areas_original), radius + required_range_x, ClipperLib::jtMiter, 1.2));
                             }
-                        collisions = processing_last_mesh && layer_idx < int(anti_overhang.size()) ? 
+                        // Strict blockers join the collision areas, so the avoidance built on top of them
+                        // steers branches around a blocker and never starts one above a spot from which
+                        // the plate cannot be reached. Deliberately not keyed off processing_last_mesh:
+                        // that flag compares a value taken from layer_outline_indices against its size and
+                        // is therefore always false, which is why blockers never reached the collisions.
+                        collisions = strict_blockers && layer_idx < int(anti_overhang.size()) ?
                                 union_(collisions, offset(union_ex(anti_overhang[layer_idx]), radius, ClipperLib::jtMiter, 1.2)) : 
                                 union_(collisions);
                         auto &dst = data[layer_idx];

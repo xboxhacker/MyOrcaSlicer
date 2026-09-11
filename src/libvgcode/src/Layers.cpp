@@ -31,7 +31,14 @@ void Layers::update(const PathVertex& vertex, uint32_t vertex_id)
     }
     else {
         Item& item = m_items.back();
-        if (vertex.type == EMoveType::Extrude && vertex.role != EGCodeExtrusionRole::Custom && item.z != vertex.position[2])
+        // Keep the layer's base (lowest) extrusion Z as its representative height. With staggered
+        // perimeters the inner walls are raised by half a layer height and may be printed last within
+        // the layer; without taking the minimum here the layer's reported Z (used by the vertical
+        // layer slider and the current-Z readout) would jump up by half a layer height. For regular
+        // prints every extrusion in a layer shares the same Z, so this is a no-op. item.z == 0 means
+        // it has not been set by an extrusion yet (printable layers always have Z > 0).
+        if (vertex.type == EMoveType::Extrude && vertex.role != EGCodeExtrusionRole::Custom &&
+            (item.z == 0.0f || vertex.position[2] < item.z))
             item.z = vertex.position[2];
         item.range.set_max(vertex_id);
         for (size_t i = 0; i < TIME_MODES_COUNT; ++i) {

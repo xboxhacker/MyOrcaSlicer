@@ -405,7 +405,14 @@ coordf_t Layer::get_sparse_infill_max_void_area()
     double max_void_area = 0.;
     for (auto layerm : m_regions) {
         Flow flow = layerm->flow(frInfill);
-        float density = layerm->region().config().sparse_infill_density;
+        float density = float(sparse_infill_max_density(layerm->region().config()));
+        if (progressive_infill_active(layerm->region().config())) {
+            const PrintRegionConfig &cfg = layerm->region().config();
+            density = float(std::min(cfg.progressive_infill_density_bottom.value,
+                                     cfg.progressive_infill_density_top.value));
+            if (cfg.progressive_infill_start_height.value > EPSILON)
+                density = std::min(density, float(cfg.sparse_infill_density.value));
+        }
         InfillPattern pattern = layerm->region().config().sparse_infill_pattern;
         if (density == 0.)
             return -1;

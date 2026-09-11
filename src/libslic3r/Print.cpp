@@ -173,6 +173,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "filename_format",
         "retraction_minimum_travel",
         "restart_extra_minimum_travel",
+        "no_restart_extra_on_inner_gap_sparse",
         "retract_before_wipe",
         "retract_after_wipe",
         "retract_when_changing_layer",
@@ -183,6 +184,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "retract_lift_above",
         "retract_lift_below", 
         "retract_lift_enforce",
+        "retract_lift_settle_time",
         "retract_restart_extra",
         "retract_restart_extra_toolchange",
         "retraction_speed",
@@ -2194,6 +2196,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             if (!model_volume1.mmu_segmentation_facets.equals(model_volume2.mmu_segmentation_facets))
                 return false;
             if (!model_volume1.fuzzy_skin_facets.equals(model_volume2.fuzzy_skin_facets))
+                return false;
+            if (!model_volume1.ironing_facets.equals(model_volume2.ironing_facets))
                 return false;
             if (model_volume1.config.get() != model_volume2.config.get())
                 return false;

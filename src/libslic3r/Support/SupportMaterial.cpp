@@ -517,10 +517,12 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
 //    intermediate_layers.clear();
 //    interface_layers.clear();
 
-#ifdef SLIC3R_DEBUG
     SupportGeneratorLayersPtr layers_sorted =
-#endif // SLIC3R_DEBUG
-    generate_support_layers(object, raft_layers, bottom_contacts, top_contacts, intermediate_layers, interface_layers, base_interface_layers);
+        generate_support_layers(object, raft_layers, bottom_contacts, top_contacts, intermediate_layers, interface_layers, base_interface_layers);
+
+    // Strict support blockers. The sorted list shares the layer objects with the sets handed to the
+    // toolpath generator below, so clipping here covers contacts, interfaces, bases and columns.
+    clip_support_layers_by_blockers(object, layers_sorted, true);
 
     BOOST_LOG_TRIVIAL(info) << "Support generator - Generating tool paths";
 

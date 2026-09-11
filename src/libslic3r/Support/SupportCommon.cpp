@@ -1328,6 +1328,53 @@ static constexpr const std::initializer_list<SupporLayerType> support_types_inte
     SupporLayerType::RaftInterface, SupporLayerType::BottomContact, SupporLayerType::BottomInterface, SupporLayerType::TopContact, SupporLayerType::TopInterface
 };
 
+void clip_support_layers_by_blockers(const PrintObject &object, SupportGeneratorLayersPtr &layers, bool project_blockers_upward)
+{
+    if (! object.config().support_blocker_strict.value || layers.empty())
+        return;
+
+    std::vector<Polygons> blockers = object.slice_support_blockers();
+    object.project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, blockers);
+    if (blockers.empty())
+        return;
+
+    // Normal supports drop straight down, so unlike tree branches they cannot route around a blocker.
+    // Merely clipping a column where it crosses one would leave everything above it floating, so the
+    // blocker is projected up through all the layers above instead, removing such a column outright.
+    // This only holds when the support has to reach the plate; if it is allowed to rest on the model,
+    // support sitting on a surface above a blocker is legitimate and must be kept.
+    if (project_blockers_upward && object.config().support_on_build_plate_only.value)
+        for (size_t i = 1; i < blockers.size(); ++ i)
+            if (! blockers[i - 1].empty())
+                blockers[i] = union_(blockers[i], blockers[i - 1]);
+
+    // blockers is indexed by object layer, while a support layer may sit at any print_z in between
+    // (bridging layers, interface gaps, intermediate layers), so map each support layer onto the
+    // first object layer whose slab reaches up to it.
+    std::vector<coordf_t> object_zs;
+    object_zs.reserve(object.layers().size());
+    for (const Layer *l : object.layers())
+        object_zs.emplace_back(l->print_z);
+    if (object_zs.empty())
+        return;
+
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()),
+        [&layers, &blockers, &object_zs](const tbb::blocked_range<size_t> &range) {
+            for (size_t i = range.begin(); i < range.end(); ++ i) {
+                SupportGeneratorLayer *layer = layers[i];
+                if (layer == nullptr || layer->polygons.empty() ||
+                    layer->layer_type == SupporLayerType::RaftBase ||
+                    layer->layer_type == SupporLayerType::RaftInterface)
+                    continue;
+                size_t idx = std::lower_bound(object_zs.begin(), object_zs.end(), layer->print_z - EPSILON) - object_zs.begin();
+                if (idx >= object_zs.size())
+                    idx = object_zs.size() - 1;
+                if (idx < blockers.size() && ! blockers[idx].empty())
+                    layer->polygons = diff(layer->polygons, blockers[idx]);
+            }
+        });
+}
+
 SupportGeneratorLayersPtr generate_support_layers(
     PrintObject                         &object,
     const SupportGeneratorLayersPtr     &raft_layers,

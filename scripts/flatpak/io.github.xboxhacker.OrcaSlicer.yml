@@ -1,4 +1,4 @@
-app-id: io.github.nanashithenameless.OrcaSlicer
+app-id: io.github.xboxhacker.OrcaSlicer
 runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
@@ -28,8 +28,8 @@ finish-args:
   # Allow read-only access to OrcaSlicer's legacy config and cache directories (if they exist) for migration purposes.
   - --filesystem=~/.var/app/io.github.orcaslicer.OrcaSlicer:ro
   # Allow OrcaSlicer to own and talk to instance-check D-Bus names (InstanceCheck.cpp)
-  - --talk-name=io.github.nanashithenameless.OrcaSlicer.InstanceCheck.*
-  - --own-name=io.github.nanashithenameless.OrcaSlicer.InstanceCheck.*
+  - --talk-name=io.github.xboxhacker.OrcaSlicer.InstanceCheck.*
+  - --own-name=io.github.xboxhacker.OrcaSlicer.InstanceCheck.*
   - --system-talk-name=org.freedesktop.UDisks2
   - --env=SPNAV_SOCKET=/run/spnav.sock
 
@@ -386,7 +386,7 @@ modules:
 
       # AppData metainfo for GNOME Software & Co.
       - type: file
-        path: io.github.nanashithenameless.OrcaSlicer.metainfo.xml
+        path: io.github.xboxhacker.OrcaSlicer.metainfo.xml
 
       # Startup script
       - type: file

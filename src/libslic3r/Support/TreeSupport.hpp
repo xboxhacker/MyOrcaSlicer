@@ -321,6 +321,10 @@ public:
     // union contours of all layers below
     std::vector<ExPolygons> m_layer_outlines_below;
 
+    // Support blockers, folded into the collision areas so branches route around them instead of
+    // being cut off by them. Only populated when support_blocker_strict is enabled.
+    std::vector<Polygons> m_blockers;
+
     std::vector<double> m_max_move_distances;
 
     /*!

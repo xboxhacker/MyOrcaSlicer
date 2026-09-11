@@ -15,9 +15,9 @@
 ***Please note: As this is free software which offers no income for me I am not offering a bug-bounty of any kind at this time.***\
 ***This is an unofficial passion project fork; there are no guarantees of response time or fixes.***
 
-Please open a [Bug Report](<https://github.com/NanashiTheNameless/OrcaSlicer/issues/new?template=bug_report.yml>) or start a [PR](<https://github.com/NanashiTheNameless/OrcaSlicer/pulls>) if you have identified any issues.
+Please open a [Bug Report](<https://github.com/xboxhacker/MyOrcaSlicer/issues/new?template=bug_report.yml>) or start a [PR](<https://github.com/xboxhacker/MyOrcaSlicer/pulls>) if you have identified any issues.
 
-If you wish to disclose any vulnerabilities you have found privately you may use [the Security tab](<https://github.com/NanashiTheNameless/OrcaSlicer/security>).
+If you wish to disclose any vulnerabilities you have found privately you may use [the Security tab](<https://github.com/xboxhacker/MyOrcaSlicer/security>).
 
 ## What to include
 

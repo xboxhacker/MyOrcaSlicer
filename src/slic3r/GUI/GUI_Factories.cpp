@@ -58,7 +58,7 @@ static SettingsFactory::Bundle FREQ_SETTINGS_BUNDLE_FFF =
     //BBS
     { L("Quality"), { "layer_height" } },
     { L("Shell"), { "wall_loops", "top_shell_layers", "bottom_shell_layers"} },
-    { L("Infill")               , { "sparse_infill_density", "sparse_infill_pattern" } },
+    { L("Infill")               , { "sparse_infill_density", "progressive_infill", "sparse_infill_pattern" } },
     // BBS
     { L("Support")     , { "enable_support", "support_type", "support_threshold_angle", "support_threshold_overlap",
                                     "support_base_pattern", "support_on_build_plate_only","support_critical_regions_only",
@@ -104,6 +104,7 @@ std::map<std::string, std::vector<SimpleSettingData>> SettingsFactory::PART_CATE
        {"ironing_flow", "", 9},
        {"ironing_spacing", "", 10},
        {"ironing_inset", "", 11},
+       {"ironing_small_area_flow_compensation", "", 12},
        {"bridge_flow", "", 11},
        {"make_overhang_printable", "", 11},
        {"bridge_density", "", 1},
@@ -121,6 +122,11 @@ std::map<std::string, std::vector<SimpleSettingData>> SettingsFactory::PART_CATE
        {"bottom_shell_thickness", L("Bottom Minimum Shell Thickness"), 1},
        {"bottom_surface_density", L("Bottom Surface Density"), 1},
        {"sparse_infill_density", "", 1},
+       {"progressive_infill", "", 1},
+       {"progressive_infill_start_height", "", 1},
+       {"progressive_infill_density_bottom", "", 1},
+       {"progressive_infill_density_top", "", 1},
+       {"progressive_infill_step", "", 1},
        {"sparse_infill_pattern", "", 1},
        {"lateral_lattice_angle_1", "", 1},
        {"lateral_lattice_angle_2", "", 1},

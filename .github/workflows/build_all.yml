@@ -205,17 +205,17 @@ jobs:
     - name: Disable debug info for faster CI builds
       run: |
         sed -i '/^build-options:/a\  no-debuginfo: true\n  strip: true' \
-          scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.yml
+          scripts/flatpak/io.github.xboxhacker.OrcaSlicer.yml
       shell: bash
     - name: Inject git commit hash into Flatpak manifest
       run: |
         sed -i "/name: OrcaSlicer/{n;s|buildsystem: simple|buildsystem: simple\n    build-options:\n      env:\n        git_commit_hash: \"$git_commit_hash\"|}" \
-          scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.yml
+          scripts/flatpak/io.github.xboxhacker.OrcaSlicer.yml
       shell: bash
     - uses: flatpak/flatpak-github-actions/flatpak-builder@master
       with:
         bundle: OrcaSlicer-Linux-flatpak_${{ matrix.variant.arch }}.flatpak
-        manifest-path: scripts/flatpak/io.github.nanashithenameless.OrcaSlicer.yml
+        manifest-path: scripts/flatpak/io.github.xboxhacker.OrcaSlicer.yml
         cache: false
         arch: ${{ matrix.variant.arch }}
         upload-artifact: false
@@ -225,11 +225,11 @@ jobs:
         name: OrcaSlicer-Linux-flatpak_nightly_${{ matrix.variant.arch }}.flatpak
         path: '/__w/OrcaSlicer/OrcaSlicer/OrcaSlicer-Linux-flatpak_${{ matrix.variant.arch }}.flatpak'
     - name: Deploy Flatpak to nightly release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'NanashiTheNameless/OrcaSlicer'
-      uses: NanashiTheNameless/deploy-nightly@master
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'xboxhacker/MyOrcaSlicer'
+      uses: andelf/nightly-release@master
       with:
         token: ${{ secrets.GH_TOKEN }}
-        upload_url: https://uploads.github.com/repos/NanashiTheNameless/OrcaSlicer/releases/242055857/assets{?name,label}
+        upload_url: https://uploads.github.com/repos/xboxhacker/MyOrcaSlicer/releases/242055857/assets{?name,label}
         release_id: 242055857
         asset_path: '/__w/OrcaSlicer/OrcaSlicer/OrcaSlicer-Linux-flatpak_${{ matrix.variant.arch }}.flatpak'
         asset_name: OrcaSlicer-Linux-flatpak_nightly_${{ matrix.variant.arch }}.flatpak
