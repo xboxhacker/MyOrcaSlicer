@@ -118,6 +118,12 @@ public:
     coordf_t    z;
     // in unscaled coordinates
     coordf_t    spacing;
+    // Multiplier applied to spacing when computing the extrusion flow.
+    // 1.0 keeps the normal behavior (flow follows the generated spacing). Values > 1 can be used
+    // when lines are deliberately placed closer together than their nominal spacing: the flow is
+    // then computed from spacing * flow_spacing_scale, so each line keeps its nominal volume while
+    // overlapping its neighbors.
+    double      flow_spacing_scale = 1.;
     // infill / perimeter overlap, in unscaled coordinates
     coordf_t    overlap;
     // in radians, ccw, 0 = East
@@ -183,6 +189,7 @@ protected:
         layer_id(size_t(-1)),
         z(0.),
         spacing(0.),
+        flow_spacing_scale(1.),
         // Infill / perimeter overlap.
         overlap(0.),
         // Initial angle is undefined.

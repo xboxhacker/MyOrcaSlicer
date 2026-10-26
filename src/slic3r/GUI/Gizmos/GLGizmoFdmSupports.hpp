@@ -97,6 +97,7 @@ private:
     std::vector<std::pair<wxString, wxString>> m_shortcuts_bucket_fill;
     // Contains all shortcuts in the format of {shortcut, description}, e.g. {alt + _L("Left mouse button"), _L("Part_selection")}
     std::vector<std::pair<wxString, wxString>> m_shortcuts_gap_fill;
+    std::vector<std::pair<wxString, wxString>> m_shortcuts_lasso;
 };
 
 

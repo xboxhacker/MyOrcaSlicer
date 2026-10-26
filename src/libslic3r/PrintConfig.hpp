@@ -939,6 +939,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               elefant_foot_compensation))
     ((ConfigOptionInt,                 elefant_foot_compensation_layers))
     ((ConfigOptionPercent,             elefant_foot_layers_density))
+    // Per object, so several parts on one plate can each use a different first-layer overlap.
+    ((ConfigOptionPercent,             initial_layer_line_overlap))
     ((ConfigOptionFloat,               max_bridge_length))
     ((ConfigOptionFloatOrPercent,      line_width))
     // Force the generation of solid shells between adjacent materials/volumes.
@@ -952,6 +954,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               raft_first_layer_expansion))
     ((ConfigOptionInt,                 raft_layers))
     ((ConfigOptionEnum<SeamPosition>,  seam_position))
+    ((ConfigOptionFloat,               seam_random_below))
+    ((ConfigOptionBool,                seam_first_layer_front))
     ((ConfigOptionBool,                staggered_inner_seams))
     ((ConfigOptionFloat,               slice_closing_radius))
     ((ConfigOptionEnum<SlicingMode>,   slicing_mode))
@@ -1005,6 +1009,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatOrPercent,      support_threshold_overlap))
     ((ConfigOptionFloat,               support_object_xy_distance))
     ((ConfigOptionFloat,               support_object_first_layer_gap))
+    // Positive lift applied only while extruding bed-touching support on the first layer.
+    ((ConfigOptionFloat,               support_base_first_layer_z_offset))
     ((ConfigOptionBool,                support_ironing))
     ((ConfigOptionEnum<InfillPattern>, support_ironing_pattern))
     ((ConfigOptionPercent,             support_ironing_flow))
@@ -1046,6 +1052,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionPercent,            tree_support_top_rate))
     ((ConfigOptionFloat,              tree_support_branch_diameter_organic))
     ((ConfigOptionFloat,              tree_support_branch_angle_organic))
+    ((ConfigOptionFloat,              tree_support_base_diameter))
     ((ConfigOptionEnum<GapFillTarget>,gap_fill_target))
     ((ConfigOptionFloat,              min_length_factor))
 

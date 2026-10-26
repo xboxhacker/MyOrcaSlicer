@@ -2355,6 +2355,16 @@ void GUI_App::init_app_config()
 
     BOOST_LOG_TRIVIAL(info) << boost::format("gui mode, Current OrcaSlicer Version %1% build %2%") % SoftFever_VERSION % GIT_COMMIT_HASH;
 
+    // 3mf import writes the extracted meshes here. The Windows system temp folder
+    // refuses these writes, and the loader then reports that the file has no geometry.
+    try {
+        const boost::filesystem::path scratch = boost::filesystem::path(Slic3r::data_dir()) / "temp";
+        boost::filesystem::create_directories(scratch);
+        set_temporary_dir(scratch.string());
+    } catch (const std::exception &ex) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to create scratch temp dir: " << ex.what();
+    }
+
     //BBS: remove GCodeViewer as seperate APP logic
 	if (!app_config)
         app_config = new AppConfig();
@@ -4587,7 +4597,7 @@ std::string GUI_App::handle_web_request(std::string cmd)
             else if (command_str.compare("get_recent_projects") == 0) {
                 if (mainframe) {
                     if (mainframe->m_webview) {
-                        mainframe->m_webview->SendRecentList(INT_MAX);
+                        mainframe->m_webview->SendRecentList(18);
                     }
                 }
             }

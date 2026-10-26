@@ -3396,6 +3396,17 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloatOrPercent(0., false));
 
+    def = this->add("initial_layer_line_overlap", coPercent);
+    def->label = L("First layer line overlap");
+    def->category = L("Quality");
+    def->tooltip = L("Moves each first-layer solid infill line into the previous line by this percent of the line width. "
+                     "The line width stays at the quality setting. 0 disables it; 3-10% is usually enough to close the grooves "
+                     "on a textured plate. Set this on each object to test several values on one plate. The process preset value is only the default.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 50;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
 
     def = this->add("initial_layer_print_height", coFloat);
     def->label = L("First layer height");
@@ -3577,7 +3588,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("fuzzy_skin_thickness", coFloat);
     def->label = L("Fuzzy skin thickness");
     def->category = L("Others");
-    def->tooltip = L("The width within which to jitter. It's advised to be below outer wall line width.");
+    def->tooltip = L("How far the nozzle can wander left/right of the wall. Smaller values make a finer, tighter texture. "
+                     "This does not control machine load — that is Fuzzy skin point distance.");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min = 0;
     def->max = 2;
@@ -3587,7 +3599,10 @@ void PrintConfigDef::init_fff_params()
     def = this->add("fuzzy_skin_point_distance", coFloat);
     def->label = L("Fuzzy skin point distance");
     def->category = L("Others");
-    def->tooltip = L("The average distance between the random points introduced on each line segment.");
+    def->tooltip = L("Average spacing between fuzzy points. This is the setting that overloads printers. "
+                     "Too small (0.1 mm on a 0.8 mm Klipper nozzle) creates thousands of tiny G1 moves, zits, "
+                     "and MCU faults. Use about 0.4–0.6× nozzle diameter (0.3–0.5 mm on 0.8 mm). "
+                     "The slicer will not emit points closer than max(0.2 mm, 0.4× nozzle).");
     def->sidetext = L("mm");	// millimeters, CIS languages need translation
     def->min = 0.01f; // point distance cannot be 0! Otherwise we get infinite loop + OOM due to infinite line division.
     def->max = 5.f;
@@ -5585,6 +5600,25 @@ void PrintConfigDef::init_fff_params()
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionEnum<SeamPosition>(spAligned));
 
+    def = this->add("seam_random_below", coFloat);
+    def->label = L("Random seams below");
+    def->category = L("Quality");
+    def->tooltip = L("Use random seams from the bed up to this height, then the Seam position setting. "
+                     "Set 0 to disable. Useful to scatter seams on the first section of a print while keeping an aligned seam above.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("seam_first_layer_front", coBool);
+    def->label = L("First layer seam at front");
+    def->category = L("Quality");
+    def->tooltip = L("Start every first layer wall at its front-most point (lowest Y), close to a prime line at the front of the bed. "
+                     "This avoids a long travel to the back right after priming, which can leave the restart under-extruded. "
+                     "Seam painting and overhang avoidance are still respected. Layers above the first use Seam position.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("staggered_inner_seams", coBool);
     def->label = L("Staggered inner seams");
     def->category = L("Quality");
@@ -6159,6 +6193,19 @@ void PrintConfigDef::init_fff_params()
     //Support with too small spacing may touch the object and difficult to remove.
     def->set_default_value(new ConfigOptionFloat(0.2));
 
+    def = this->add("support_base_first_layer_z_offset", coFloat);
+    def->label = L("Support base first layer Z offset");
+    def->category = L("Support");
+    def->tooltip = L("Raises bed-touching support bases on the first layer only, so they stick less "
+                     "when the model first layer is printed with extra squish. "
+                     "The model first layer and all later layers are unchanged. "
+                     "Typical values are 0.05–0.15 mm. Set to 0 to disable.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->max = 1;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
     def = this->add("support_angle", coFloat);
     def->label = L("Pattern angle");
     def->category = L("Support");
@@ -6613,6 +6660,18 @@ void PrintConfigDef::init_fff_params()
     def->max      = 10;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(2.));
+
+    def           = this->add("tree_support_base_diameter", coFloat);
+    def->label    = L("Base diameter");
+    def->category = L("Support");
+    // TRN PrintSettings: "Organic supports" > "Base diameter"
+    def->tooltip  = L("Diameter each organic tree trunk tries to reach where it stands on the build plate. "
+                      "A larger base improves bed adhesion and stability.");
+    def->sidetext = L("mm");	// millimeters, CIS languages need translation
+    def->min      = 0.;
+    def->max      = 100.;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(7.5));
 
     def = this->add("tree_support_wall_count", coInt);
     def->label = L("Support wall loops");

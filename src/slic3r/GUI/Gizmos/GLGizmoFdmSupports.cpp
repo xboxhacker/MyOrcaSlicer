@@ -122,6 +122,14 @@ bool GLGizmoFdmSupports::on_init()
         {ctrl + _L("Mouse wheel"), _L("Gap area")}
     };
 
+    m_shortcuts_lasso = {
+        {_L("Left mouse button") + " " + _L("drag"),          _L("Enforce supports")},
+        {_L("Right mouse button") + " " + _L("drag"),         _L("Block supports")},
+        {shift + _L("Left mouse button") + " " + _L("drag"),  _L("Erase")},
+        {ctrl + _L("Left mouse button") + " " + _L("drag"),   _L("Rotate view")},
+        clipping_shortcut
+    };
+
     memset(&m_print_instance, 0, sizeof(m_print_instance));
     return true;
 }
@@ -164,6 +172,9 @@ bool GLGizmoFdmSupports::on_key_down_select_tool_type(int keyCode) {
         break;
     case 'G':
         m_current_tool = ImGui::GapFillIcon;
+        break;
+    case 'L':
+        m_current_tool = ImGui::LassoIcon;
         break;
     default:
         return false;
@@ -257,14 +268,14 @@ void GLGizmoFdmSupports::on_render_input_window(float x, float y, float bottom_l
 
     ImGui::AlignTextToFramePadding();
     m_imgui->text(m_desc.at("tool_type"));
-    std::array<wchar_t, 4> tool_ids = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::FillButtonIcon, ImGui::GapFillIcon };
-    std::array<wchar_t, 4> icons;
+    std::array<wchar_t, 5> tool_ids = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::FillButtonIcon, ImGui::GapFillIcon, ImGui::LassoIcon };
+    std::array<wchar_t, 5> icons;
     if (m_is_dark_mode)
-        icons = { ImGui::CircleButtonDarkIcon, ImGui::SphereButtonDarkIcon, ImGui::FillButtonDarkIcon, ImGui::GapFillDarkIcon };
+        icons = { ImGui::CircleButtonDarkIcon, ImGui::SphereButtonDarkIcon, ImGui::FillButtonDarkIcon, ImGui::GapFillDarkIcon, ImGui::LassoDarkIcon };
     else
-        icons = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::FillButtonIcon, ImGui::GapFillIcon };
+        icons = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::FillButtonIcon, ImGui::GapFillIcon, ImGui::LassoIcon };
 
-    std::array<wxString, 4> tool_tips = { _L("Circle"), _L("Sphere"), _L("Fill"), _L("Gap Fill") };
+    std::array<wxString, 5> tool_tips = { _L("Circle"), _L("Sphere"), _L("Fill"), _L("Gap Fill"), _L("Lasso") };
     for (int i = 0; i < tool_ids.size(); i++) {
         //std::string  str_label = std::string("##");
         //std::wstring btn_name = icons[i] + boost::nowide::widen(str_label);
@@ -373,6 +384,8 @@ void GLGizmoFdmSupports::on_render_input_window(float x, float y, float bottom_l
             update_model_object();
             m_parent.set_as_dirty();
         }
+    } else if (m_current_tool == ImGui::LassoIcon) {
+        m_tool_type = ToolType::LASSO;
     }
 
     if (m_current_tool != ImGui::GapFillIcon) {
@@ -501,6 +514,8 @@ void GLGizmoFdmSupports::render_tooltip_button(float x, float y) {
                 return m_shortcuts_bucket_fill;
             case ImGui::GapFillIcon:
                 return m_shortcuts_gap_fill;
+            case ImGui::LassoIcon:
+                return m_shortcuts_lasso;
             default:
                 return {};
         }

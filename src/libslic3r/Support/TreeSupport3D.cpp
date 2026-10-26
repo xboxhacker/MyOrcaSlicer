@@ -3520,6 +3520,38 @@ static void generate_support_areas(Print &print, TreeSupport* tree_support, cons
         // Strict support blockers: no branch, trunk or base may occupy a blocker volume.
         clip_support_layers_by_blockers(print_object, layers_sorted);
 
+        if (volumes.hasPaintedTops()) {
+            // Painted tops are a hard keep-out for bases. The paint is stored on the object layer
+            // it is the top of, while a base is printed one bottom-gap above that, so each support
+            // layer is tested against the paint of the object layers it could be resting on.
+            // Anything higher than that gap is left alone, and so is the bed and every unpainted spot.
+            std::vector<double> object_zs;
+            object_zs.reserve(print_object.layers().size());
+            for (const Layer *l : print_object.layers())
+                object_zs.emplace_back(l->print_z);
+            const size_t raft     = config.raft_layers.size();
+            const int    lookback = int(config.z_distance_bottom_layers) + 2;
+            if (! object_zs.empty())
+                tbb::parallel_for(tbb::blocked_range<size_t>(0, layers_sorted.size()),
+                    [&](const tbb::blocked_range<size_t> &range) {
+                        for (size_t i = range.begin(); i < range.end(); ++ i) {
+                            SupportGeneratorLayer *layer = layers_sorted[i];
+                            if (layer == nullptr || layer->polygons.empty() ||
+                                layer->layer_type == SupporLayerType::RaftBase ||
+                                layer->layer_type == SupporLayerType::RaftInterface)
+                                continue;
+                            size_t idx = size_t(std::lower_bound(object_zs.begin(), object_zs.end(), layer->print_z - EPSILON) - object_zs.begin());
+                            if (idx >= object_zs.size())
+                                idx = object_zs.size() - 1;
+                            Polygons paint;
+                            for (int d = 0; d <= lookback && idx >= size_t(d); ++ d)
+                                append(paint, volumes.getPaintedTop(LayerIndex(raft + idx - size_t(d))));
+                            if (! paint.empty())
+                                layer->polygons = diff(layer->polygons, paint);
+                        }
+                    });
+        }
+
         print.set_status(69, _L("Generating support"));
         generate_support_toolpaths(print_object.support_layers(), print_object.config(), support_params, print_object.slicing_parameters(),
             raft_layers, bottom_contacts, top_contacts, intermediate_layers, interface_layers, base_interface_layers);

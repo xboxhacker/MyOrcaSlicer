@@ -338,7 +338,19 @@ bool WebView::CheckWebViewRuntime()
 {
     wxWebViewFactoryEdge factory;
     auto wxVersion = factory.GetVersionInfo(wxVersionContext::RunTime);
-    return wxVersion.GetMajor() != 0;
+    if (wxVersion.GetMajor() != 0)
+        return true;
+#ifdef __WIN32__
+    // The Evergreen runtime can be installed while wx still reports version 0.
+    // Treating that as missing downloads an installer and asks Windows for administrator
+    // rights, which is the protection prompt. The installed runtime is enough.
+    wxString program_files;
+    if (wxGetEnv("ProgramFiles(x86)", &program_files) && !program_files.empty()) {
+        if (wxDirExists(program_files + "\\Microsoft\\EdgeWebView\\Application"))
+            return true;
+    }
+#endif
+    return false;
 }
 
 bool WebView::DownloadAndInstallWebViewRuntime()

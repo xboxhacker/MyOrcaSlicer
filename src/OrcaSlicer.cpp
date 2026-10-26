@@ -1251,8 +1251,22 @@ int CLI::run(int argc, char **argv)
         return CLI_INVALID_PARAMS;
     }
     BOOST_LOG_TRIVIAL(info) << "finished setup params, argc="<< argc << std::endl;
-    std::string temp_path = wxFileName::GetTempDir().utf8_str().data();
-    set_temporary_dir(temp_path);
+    // Model backups (written while loading 3mf) go under this dir. The system temp dir is denied writes for
+    // the app on some Windows setups, which makes 3mf loading fail with "file does not contain any geometry data".
+    // wxStandardPaths cannot be used here: wxApp does not exist yet, and GetUserLocalDataDir() crashes in GetAppName.
+    try {
+        boost::filesystem::path exe_dir = boost::dll::program_location().parent_path();
+#ifdef __APPLE__
+        exe_dir = exe_dir.parent_path().parent_path().parent_path();
+#endif
+        boost::filesystem::path scratch = exe_dir / "data_dir" / "temp";
+        if (!boost::filesystem::exists(exe_dir / "data_dir"))
+            scratch = boost::filesystem::temp_directory_path() / "orcaslicer_temp";
+        boost::filesystem::create_directories(scratch);
+        set_temporary_dir(scratch.string());
+    } catch (const std::exception &ex) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to set startup scratch dir: " << ex.what();
+    }
 
     m_extra_config.apply(m_config, true);
     m_extra_config.normalize_fdm();

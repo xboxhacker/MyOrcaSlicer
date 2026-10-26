@@ -383,6 +383,9 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
             //FIXME Killing supports on any change of "filament_soluble" is rough. We should check for each object whether that is necessary.
             osteps.emplace_back(posSupportMaterial);
             osteps.emplace_back(posSimplifySupportPath);
+        } else if (opt_key == "initial_layer_line_overlap") {
+            // Only the first layer's solid infill spacing changes, so invalidate the infill (and the G-code) only.
+            osteps.emplace_back(posInfill);
         } else if (
                opt_key == "initial_layer_line_width"
             || opt_key == "min_layer_height"

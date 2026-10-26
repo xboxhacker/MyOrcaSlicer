@@ -4112,9 +4112,11 @@ void MainFrame::get_recent_projects(boost::property_tree::wptree &tree, int imag
         if (!ec) {
             std::wstring time = wxDateTime(t).FormatISOCombined(' ').ToStdWstring();
             item.put(L"time", time);
-            if (i <= images) {
+            // Skip huge thumbnails. A multi-megabyte script makes the home page stay blank.
+            if (images > 0 && static_cast<int>(i) < images) {
                 auto thumbnail = m_recent_projects.GetThumbnailUrl(i);
-                if (!thumbnail.empty()) item.put(L"image", thumbnail);
+                if (!thumbnail.empty() && thumbnail.size() < 40000)
+                    item.put(L"image", thumbnail);
             }
         } else {
             item.put(L"time", _L("File is missing"));

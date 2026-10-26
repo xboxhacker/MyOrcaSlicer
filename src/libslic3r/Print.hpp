@@ -446,7 +446,8 @@ public:
     std::vector<Polygons>       slice_support_enforcers() const { return this->slice_support_volumes(ModelVolumeType::SUPPORT_ENFORCER); }
 
     // Helpers to project custom facets on slices
-    void project_and_append_custom_facets(bool seam, EnforcerBlockerType type, std::vector<Polygons>& expolys, std::vector<std::pair<Vec3f,Vec3f>>* vertical_points=nullptr) const;
+    // include_top_surfaces also projects upward facing painted areas onto the layer they are the top of.
+    void project_and_append_custom_facets(bool seam, EnforcerBlockerType type, std::vector<Polygons>& expolys, std::vector<std::pair<Vec3f,Vec3f>>* vertical_points=nullptr, bool include_top_surfaces=false) const;
     // Upward-facing painted ironing facets, indexed by object layer.
     const Polygons&             painted_ironing_polygons(size_t layer_id) const;
     const Polygons&             painted_ironing_blockers(size_t layer_id) const;

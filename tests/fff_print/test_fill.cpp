@@ -7,6 +7,7 @@
 #include "libslic3r/Fill/Fill.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
+#include "libslic3r/Layer.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/SVG.hpp"
 #include "libslic3r/libslic3r.h"
@@ -475,4 +476,52 @@ bool test_if_solid_surface_filled(const ExPolygon& expolygon, double flow_spacin
 #endif
 
     return uncovered.empty(); // solid surface is fully filled
+}
+
+// First layer line overlap keeps the quality line width and moves the next line into the
+// previous one. The same width extruded on a shorter pitch deposits more volume.
+TEST_CASE("Fill: first layer line overlap increases first layer infill volume", "[Fill]") {
+    auto first_layer_bottom = [](double overlap_percent) {
+        DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+        config.set_key_value("initial_layer_line_overlap", new ConfigOptionPercent(overlap_percent));
+        config.set_key_value("initial_layer_line_width", new ConfigOptionFloatOrPercent(0.5, false));
+
+        Slic3r::Print print;
+        Slic3r::Model model;
+        // Build the print manually instead of using Test::init_print(), whose InfiniteBed
+        // arrangement is rejected by the arrangement code used by this test binary.
+        Slic3r::ModelObject *object = model.add_object();
+        object->add_volume(Slic3r::Test::mesh(Slic3r::Test::TestMesh::cube_20x20x20));
+        object->add_instance();
+        object->ensure_on_bed();
+        print.auto_assign_extruders(object);
+        print.apply(model, config);
+        print.validate();
+        print.set_status_silent();
+        print.process();
+
+        double volume = 0.;
+        float width = 0.f;
+        const Layer &layer = *print.objects().front()->get_layer(0);
+        for (const LayerRegion *region : layer.regions()) {
+            ExtrusionEntityCollection flat = region->fills.flatten();
+            for (const ExtrusionEntity *entity : flat.entities) {
+                if (entity->role() != erBottomSurface)
+                    continue;
+                volume += entity->total_volume();
+                if (const ExtrusionPath *path = dynamic_cast<const ExtrusionPath *>(entity))
+                    if (width == 0.f)
+                        width = path->width;
+            }
+        }
+        return std::pair<double, float>{volume, width};
+    };
+
+    const auto without = first_layer_bottom(0.);
+    const auto with = first_layer_bottom(10.);
+
+    REQUIRE(without.first > 0.);
+    REQUIRE(with.first > without.first);
+    REQUIRE(without.second > 0.f);
+    REQUIRE_THAT(with.second, Catch::Matchers::WithinAbs(without.second, 1e-4));
 }

@@ -88,7 +88,6 @@ WebViewPanel::WebViewPanel(wxWindow *parent)
         wxLogError("Could not init m_browser");
         return;
     }
-    m_browser->Hide();
     SetSizer(topsizer);
 
     topsizer->Add(m_browser, wxSizerFlags().Expand().Proportion(1));
@@ -925,7 +924,12 @@ void WebViewPanel::OnError(wxWebViewEvent& evt)
         WX_ERROR_CASE(wxWEBVIEW_NAV_ERR_OTHER);
     }
 
-    BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << ": [" << category << "] " << evt.GetString().ToUTF8().data();
+    BOOST_LOG_TRIVIAL(error) << "Home page failed to load: [" << category << "] " << evt.GetURL().ToUTF8().data()
+                             << " " << evt.GetString().ToUTF8().data();
+    if (m_browser) {
+        m_browser->Show();
+        Layout();
+    }
 
     if (wxGetApp().get_mode() == comDevelop) 
     {

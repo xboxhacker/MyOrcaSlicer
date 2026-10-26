@@ -82,6 +82,7 @@ std::map<std::string, std::vector<SimpleSettingData>>  SettingsFactory::OBJECT_C
                     {"seam_position", "",2},
                     {"slice_closing_radius", "",3}, {"resolution", "",4},
                     {"xy_hole_compensation", "",5}, {"xy_contour_compensation", "",6}, {"elefant_foot_compensation", "",7},
+                    {"initial_layer_line_overlap", "",7},
                     {"make_overhang_printable_angle","", 8},{"make_overhang_printable_hole_size","",9}, {"wall_sequence","",10},
                     {"precise_z_height", "",10}
                     }},

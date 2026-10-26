@@ -225,6 +225,7 @@ protected:
     void render_cursor_sphere(const Transform3d& trafo) const;
     // BBS
     void render_cursor_height_range(const Transform3d& trafo) const;
+    void render_lasso();
     //BBS: add logic to distinguish the first_time_update and later_update
     virtual void update_model_object() = 0;
     virtual void update_from_model_object(bool first_update) = 0;
@@ -258,6 +259,7 @@ protected:
         SMART_FILL,
         // BBS
         GAP_FILL,
+        LASSO,
     };
 
     struct ProjectedMousePosition
@@ -283,6 +285,10 @@ protected:
     float    m_highlight_by_angle_threshold_deg = 0.f;
 
     GLModel m_circle;
+    GLModel m_lasso;
+    // Lasso outline in screen coordinates (pixels, y down), filled while dragging.
+    std::vector<Vec2d>  m_lasso_points;
+    EnforcerBlockerType m_lasso_state = EnforcerBlockerType::NONE;
     Vec2d m_old_center{ Vec2d::Zero() };
     float m_old_cursor_radius{ 0.0f };
     static constexpr float SmartFillAngleMin  = 0.0f;
@@ -319,6 +325,7 @@ private:
     std::vector<ProjectedHeightRange> get_projected_height_range(const Vec2d& mouse_position, double resolution, const std::vector<const ModelVolume*>& part_volumes, const std::vector<Transform3d>& trafo_matrices) const;
 
     bool is_mesh_point_clipped(const Vec3d& point, const Transform3d& trafo) const;
+    void apply_lasso();
     void update_raycast_cache(const Vec2d& mouse_position,
                               const Camera& camera,
                               const std::vector<Transform3d>& trafo_matrices) const;

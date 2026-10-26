@@ -14,8 +14,12 @@
 
 #include "bbs_3mf.hpp"
 
+#include <cerrno>
 #include <limits>
 #include <stdexcept>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <iomanip>
 
 #include <boost/assign.hpp>
@@ -5964,19 +5968,71 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         }
         boost::system::error_code ec;
         std::string filename = std::string(store_params.path);
-        boost::filesystem::remove(filename + ".tmp", ec);
+        // Write the zip outside the project folder. That folder has rejected the
+        // sibling .tmp (errno 13) and then rejected replacing the .3mf.
+        boost::filesystem::path scratch = boost::filesystem::path(data_dir()) / "temp";
+        boost::filesystem::create_directories(scratch, ec);
+        std::string save_tmp = (scratch / (boost::filesystem::path(filename).stem().string() + ".saving.3mf")).string();
+        boost::filesystem::remove(save_tmp, ec);
 
-        bool result = _save_model_to_file(filename + ".tmp", *store_params.model, store_params.plate_data_list, store_params.project_presets, store_params.config,
+        bool result = _save_model_to_file(save_tmp, *store_params.model, store_params.plate_data_list, store_params.project_presets, store_params.config,
                                           store_params.thumbnail_data, store_params.no_light_thumbnail_data, store_params.top_thumbnail_data, store_params.pick_thumbnail_data,
                                           store_params.proFn,
             store_params.calibration_thumbnail_data, store_params.id_bboxes, store_params.project, store_params.export_plate_idx);
         if (result) {
-            boost::filesystem::rename(filename + ".tmp", filename, ec);
-            if (ec) {
-                add_error("Failed to rename file: " + ec.message());
-                boost::filesystem::remove(filename + ".tmp", ec);
+#ifdef _WIN32
+            auto to_wide = [](const std::string &utf8) {
+                if (utf8.empty()) return std::wstring();
+                int n = MultiByteToWideChar(65001, 0, utf8.data(), (int) utf8.size(), nullptr, 0);
+                std::wstring wide(n, 0);
+                if (n > 0)
+                    MultiByteToWideChar(65001, 0, utf8.data(), (int) utf8.size(), wide.data(), n);
+                return wide;
+            };
+            auto clear_readonly = [](const std::wstring &path) {
+                DWORD attr = GetFileAttributesW(path.c_str());
+                if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY))
+                    SetFileAttributesW(path.c_str(), attr & ~FILE_ATTRIBUTE_READONLY);
+            };
+            std::wstring from = to_wide(save_tmp);
+            std::wstring to = to_wide(filename);
+            for (wchar_t &ch : from) if (ch == L'/') ch = L'\\';
+            for (wchar_t &ch : to) if (ch == L'/') ch = L'\\';
+            clear_readonly(to);
+            const auto slash = to.find_last_of(L'\\');
+            if (slash != std::wstring::npos)
+                clear_readonly(to.substr(0, slash));
+            BOOL moved = MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH);
+            if (!moved)
+                moved = CopyFileW(from.c_str(), to.c_str(), FALSE);
+            if (!moved) {
+                // Some folder filters refuse the normal path and allow the extended one.
+                std::wstring ext_from = L"\\\\?\\" + from;
+                std::wstring ext_to = L"\\\\?\\" + to;
+                moved = CopyFileW(ext_from.c_str(), ext_to.c_str(), FALSE);
+            }
+            if (moved)
+                DeleteFileW(from.c_str());
+            else {
+                const DWORD win_error = GetLastError();
+                add_error("Failed to replace project file, Windows error " + std::to_string(win_error));
+                BOOST_LOG_TRIVIAL(error) << "Failed to replace " << filename << " from " << save_tmp << " Windows error " << win_error;
                 return false;
             }
+#else
+            boost::filesystem::rename(save_tmp, filename, ec);
+            if (ec) {
+                boost::system::error_code copy_ec;
+                boost::filesystem::copy_file(save_tmp, filename, boost::filesystem::copy_options::overwrite_existing, copy_ec);
+                boost::filesystem::remove(save_tmp, ec);
+                ec = copy_ec;
+            }
+            if (ec) {
+                add_error("Failed to rename file: " + ec.message());
+                boost::filesystem::remove(save_tmp, ec);
+                return false;
+            }
+#endif
             if (!(store_params.strategy & SaveStrategy::Silence))
                 save_string_file(store_params.model->get_backup_path() + "/origin.txt", filename);
         }

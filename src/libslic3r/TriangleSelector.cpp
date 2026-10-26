@@ -4,6 +4,7 @@
 
 #include <boost/container/small_vector.hpp>
 #include <boost/log/trivial.hpp>
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <tbb/parallel_for.h>
@@ -291,7 +292,10 @@ void TriangleSelector::select_patch(int facet_start, std::unique_ptr<Cursor> &&c
     // In case user changed cursor size since last time, update triangle edge limit.
     // It is necessary to compare the internal radius in m_cursor! radius is in
     // world coords and does not change after scaling.
-    if (m_old_cursor_radius_sqr != m_cursor->radius_sqr) {
+    if (const Lasso *lasso = dynamic_cast<const Lasso*>(m_cursor.get())) {
+        set_edge_limit(lasso->m_edge_limit);
+        m_old_cursor_radius_sqr = -1.f;
+    } else if (m_old_cursor_radius_sqr != m_cursor->radius_sqr) {
         // BBS: improve details for large cursor radius
         TriangleSelector::HeightRange* hr_cursor = dynamic_cast<TriangleSelector::HeightRange*>(m_cursor.get());
         if (hr_cursor == nullptr) {
@@ -315,6 +319,15 @@ void TriangleSelector::select_patch(int facet_start, std::unique_ptr<Cursor> &&c
             if (m_cursor->is_edge_inside_cursor(tr, m_vertices)) {
                 start_facets.push_back(facet_id);
             }
+        }
+    }
+    else if (dynamic_cast<Lasso*>(m_cursor.get())) {
+        for (int facet_id = 0; facet_id < m_orig_size_indices; facet_id++) {
+            const Triangle& tr = m_triangles[facet_id];
+            if (m_cursor->is_facet_visible(facet_id, m_face_normals) &&
+                (m_cursor->vertices_inside(tr, m_vertices) > 0 || m_cursor->is_edge_inside_cursor(tr, m_vertices) ||
+                 m_cursor->is_pointer_in_triangle(tr, m_vertices)))
+                start_facets.push_back(facet_id);
         }
     }
     else {
@@ -2117,6 +2130,123 @@ bool TriangleSelector::Capsule2D::is_mesh_point_inside(const Vec3f &point) const
             return is_mesh_point_not_clipped(point, clipping_plane);
     }
 
+    return false;
+}
+
+TriangleSelector::Lasso::Lasso(std::vector<Vec2f> polygon_ndc, const Matrix4f &mesh_to_ndc, const Vec3f &camera_dir_world, float edge_limit_world, const Transform3d &trafo_, const ClippingPlane &clipping_plane_)
+    : Cursor(Vec3f::Zero(), 1.f, trafo_, clipping_plane_), m_polygon(std::move(polygon_ndc)), m_mesh_to_ndc(mesh_to_ndc)
+{
+    // Triangle splitting measures edges in mesh coords for uniform scaling (radius is 1 / scale then), in world coords otherwise.
+    m_edge_limit = uniform_scaling ? edge_limit_world * radius : edge_limit_world;
+    // Face normals are compared with dir in mesh coords for uniform scaling, in world coords otherwise.
+    dir = uniform_scaling ? Vec3f((trafo.linear().inverse() * camera_dir_world).normalized()) : camera_dir_world.normalized();
+
+    m_min = Vec2f(FLT_MAX, FLT_MAX);
+    m_max = Vec2f(-FLT_MAX, -FLT_MAX);
+    for (const Vec2f &pt : m_polygon) {
+        m_min = m_min.cwiseMin(pt);
+        m_max = m_max.cwiseMax(pt);
+    }
+    if (m_polygon.size() < 2)
+        return;
+
+    m_grid_size     = std::clamp(int(2.f * std::sqrt(float(m_polygon.size()))), 1, 128);
+    m_inv_cell_size = Vec2f(float(m_grid_size) / std::max(m_max.x() - m_min.x(), 1e-6f), float(m_grid_size) / std::max(m_max.y() - m_min.y(), 1e-6f));
+    m_cells.assign(size_t(m_grid_size * m_grid_size), {});
+    m_rows.assign(size_t(m_grid_size), {});
+    for (size_t i = 0, j = m_polygon.size() - 1; i < m_polygon.size(); j = i++) {
+        const Vec2f &a = m_polygon[j];
+        const Vec2f &b = m_polygon[i];
+        const int x0 = cell_x(std::min(a.x(), b.x())), x1 = cell_x(std::max(a.x(), b.x()));
+        const int y0 = cell_y(std::min(a.y(), b.y())), y1 = cell_y(std::max(a.y(), b.y()));
+        for (int y = y0; y <= y1; ++y) {
+            m_rows[y].push_back(int(i));
+            for (int x = x0; x <= x1; ++x)
+                m_cells[x + y * m_grid_size].push_back(int(i));
+        }
+    }
+}
+
+int TriangleSelector::Lasso::cell_x(float x) const
+{
+    return std::clamp(int((x - m_min.x()) * m_inv_cell_size.x()), 0, m_grid_size - 1);
+}
+
+int TriangleSelector::Lasso::cell_y(float y) const
+{
+    return std::clamp(int((y - m_min.y()) * m_inv_cell_size.y()), 0, m_grid_size - 1);
+}
+
+bool TriangleSelector::Lasso::project(const Vec3f &point, Vec2f &out) const
+{
+    const Vec4f clip = m_mesh_to_ndc * Vec4f(point.x(), point.y(), point.z(), 1.f);
+    if (clip.w() <= EPSILON)
+        return false;
+    out = Vec2f(clip.x() / clip.w(), clip.y() / clip.w());
+    return true;
+}
+
+bool TriangleSelector::Lasso::is_ndc_point_inside(const Vec2f &pt) const
+{
+    if (m_polygon.size() < 3 || pt.x() < m_min.x() || pt.x() > m_max.x() || pt.y() < m_min.y() || pt.y() > m_max.y())
+        return false;
+    // Crossing test along +x; only segments spanning pt.y can cross, and all of them are in this row.
+    bool inside = false;
+    for (int i : m_rows[cell_y(pt.y())]) {
+        const Vec2f &a = m_polygon[i];
+        const Vec2f &b = m_polygon[i == 0 ? m_polygon.size() - 1 : i - 1];
+        if ((a.y() > pt.y()) != (b.y() > pt.y()) && pt.x() < (b.x() - a.x()) * (pt.y() - a.y()) / (b.y() - a.y()) + a.x())
+            inside = !inside;
+    }
+    return inside;
+}
+
+bool TriangleSelector::Lasso::is_mesh_point_inside(const Vec3f &point) const
+{
+    Vec2f pt;
+    return project(point, pt) && is_ndc_point_inside(pt) && is_mesh_point_not_clipped(point, clipping_plane);
+}
+
+// Is the first lasso vertex inside the projected triangle? Catches a lasso drawn entirely inside one facet.
+bool TriangleSelector::Lasso::is_pointer_in_triangle(const Vec3f &p1, const Vec3f &p2, const Vec3f &p3) const
+{
+    Vec2f a, b, c;
+    if (m_polygon.empty() || !project(p1, a) || !project(p2, b) || !project(p3, c))
+        return false;
+    const Vec2f &p     = m_polygon.front();
+    auto         cross = [](const Vec2f &o, const Vec2f &u, const Vec2f &v) { return (u.x() - o.x()) * (v.y() - o.y()) - (u.y() - o.y()) * (v.x() - o.x()); };
+    const float  d1 = cross(a, b, p), d2 = cross(b, c, p), d3 = cross(c, a, p);
+    return !((d1 < 0.f || d2 < 0.f || d3 < 0.f) && (d1 > 0.f || d2 > 0.f || d3 > 0.f));
+}
+
+// Does any projected triangle edge cross the lasso outline?
+bool TriangleSelector::Lasso::is_edge_inside_cursor(const Triangle &tr, const std::vector<Vertex> &vertices) const
+{
+    std::array<Vec2f, 3> pts;
+    for (int i = 0; i < 3; ++i)
+        if (!project(vertices[tr.verts_idxs[i]].v, pts[i]))
+            return false;
+
+    const Vec2f tri_min = pts[0].cwiseMin(pts[1]).cwiseMin(pts[2]);
+    const Vec2f tri_max = pts[0].cwiseMax(pts[1]).cwiseMax(pts[2]);
+    if (m_polygon.size() < 2 || tri_max.x() < m_min.x() || tri_min.x() > m_max.x() || tri_max.y() < m_min.y() || tri_min.y() > m_max.y())
+        return false;
+
+    auto orient = [](const Vec2f &o, const Vec2f &u, const Vec2f &v) { return (u.x() - o.x()) * (v.y() - o.y()) - (u.y() - o.y()) * (v.x() - o.x()); };
+    const int x0 = cell_x(tri_min.x()), x1 = cell_x(tri_max.x());
+    const int y0 = cell_y(tri_min.y()), y1 = cell_y(tri_max.y());
+    for (int y = y0; y <= y1; ++y)
+        for (int x = x0; x <= x1; ++x)
+            for (int i : m_cells[x + y * m_grid_size]) {
+                const Vec2f &a = m_polygon[i == 0 ? m_polygon.size() - 1 : i - 1];
+                const Vec2f &b = m_polygon[i];
+                for (int e = 0; e < 3; ++e) {
+                    const Vec2f &p = pts[e];
+                    const Vec2f &q = pts[(e + 1) % 3];
+                    if ((orient(p, q, a) > 0.f) != (orient(p, q, b) > 0.f) && (orient(a, b, p) > 0.f) != (orient(a, b, q) > 0.f))
+                        return true;
+                }
+            }
     return false;
 }
 

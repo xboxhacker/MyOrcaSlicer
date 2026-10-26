@@ -1,5 +1,6 @@
 #include "Model.hpp"
 #include "libslic3r.h"
+#include "Utils.hpp"
 #include "BuildVolume.hpp"
 #include "ClipperUtils.hpp"
 #include "Exception.hpp"
@@ -956,21 +957,44 @@ std::string Model::get_auxiliary_file_temp_path()
 }
 
 // BBS: backup dir
+static std::string make_model_backup_path(const std::string &root, size_t model_id)
+{
+    std::time_t t = std::time(0);
+    std::tm* now_time = std::localtime(&t);
+    std::stringstream buf;
+    buf << "/orcaslicer_model/";
+    buf << std::put_time(now_time, "%a_%b_%d/%H_%M_%S#");
+    buf << get_current_pid() << "#";
+    buf << model_id;
+    return root + buf.str();
+}
+
+// Returns false when the directory cannot be created. A 3mf is extracted into this
+// folder; a failed create is what the UI reports as "The file does not contain any geometry data."
+static bool ensure_backup_directories(const std::string &path)
+{
+    try {
+        boost::filesystem::path temp_path(path);
+        if (boost::filesystem::exists(temp_path))
+            return true;
+        BOOST_LOG_TRIVIAL(info) << "create /3D/Objects in " << temp_path;
+        boost::filesystem::create_directories(path + "/3D/Objects");
+        BOOST_LOG_TRIVIAL(info) << "create /Metadata in " << temp_path;
+        boost::filesystem::create_directories(path + "/Metadata");
+        BOOST_LOG_TRIVIAL(info) << "create /lock.txt in " << temp_path;
+        save_string_file(path + "/lock.txt", boost::lexical_cast<std::string>(get_current_pid()));
+        return boost::filesystem::exists(temp_path);
+    } catch (std::exception &ex) {
+        BOOST_LOG_TRIVIAL(error) << "Failed to create backup path" << path << ": " << ex.what();
+        return false;
+    }
+}
+
 std::string Model::get_backup_path()
 {
     if (backup_path.empty())
     {
-        auto pid = get_current_pid();
-        boost::filesystem::path parent_path(temporary_dir());
-        std::time_t t = std::time(0);
-        std::tm* now_time = std::localtime(&t);
-        std::stringstream buf;
-        buf << "/orcaslicer_model/";
-        buf << std::put_time(now_time, "%a_%b_%d/%H_%M_%S#");
-        buf << pid << "#";
-        buf << this->id().id;
-
-        backup_path = parent_path.string() + buf.str();
+        backup_path = make_model_backup_path(temporary_dir(), this->id().id);
         BOOST_LOG_TRIVIAL(info) << boost::format("model %1%, id %2%, backup_path empty, set to %3%")%this%this->id().id%backup_path;
         boost::filesystem::path temp_path(backup_path);
         if (boost::filesystem::exists(temp_path))
@@ -979,20 +1003,16 @@ std::string Model::get_backup_path()
             boost::filesystem::remove_all(temp_path);
         }
     }
-    boost::filesystem::path temp_path(backup_path);
-    try {
-        if (!boost::filesystem::exists(temp_path))
-        {
-            BOOST_LOG_TRIVIAL(info) << "create /3D/Objects in " << temp_path;
-            boost::filesystem::create_directories(backup_path + "/3D/Objects");
-            BOOST_LOG_TRIVIAL(info) << "create /Metadata in " << temp_path;
-            boost::filesystem::create_directories(backup_path + "/Metadata");
-            BOOST_LOG_TRIVIAL(info) << "create /lock.txt in " << temp_path;
-            save_string_file(backup_path + "/lock.txt",
-                boost::lexical_cast<std::string>(get_current_pid()));
+    if (!ensure_backup_directories(backup_path)) {
+        // System temp is denied writes on this machine. Retry under the app data dir,
+        // which is the folder the portable build already uses for logs and presets.
+        const std::string fallback = data_dir().empty() ? std::string() : (boost::filesystem::path(data_dir()) / "temp").string();
+        const bool already_fallback = !fallback.empty() && backup_path.find(fallback) != std::string::npos;
+        if (!fallback.empty() && !already_fallback) {
+            BOOST_LOG_TRIVIAL(warning) << "Backup directory is not writable (" << backup_path << "), using " << fallback;
+            backup_path = make_model_backup_path(fallback, this->id().id);
+            ensure_backup_directories(backup_path);
         }
-    } catch (std::exception &ex) {
-        BOOST_LOG_TRIVIAL(error) << "Failed to create backup path" << temp_path << ": " << ex.what();
     }
 
     return backup_path;

@@ -167,6 +167,13 @@ public:
             this->ceilRadius(radius + m_current_min_xy_dist_delta) - m_current_min_xy_dist_delta;
     }
 
+    // Upward facing strict blocker paint on the top of layer_idx. Empty unless support_blocker_strict is on.
+    const Polygons& getPaintedTop(LayerIndex layer_idx) const {
+        static const Polygons empty;
+        return layer_idx >= 0 && layer_idx < LayerIndex(m_painted_tops.size()) ? m_painted_tops[layer_idx] : empty;
+    }
+    bool hasPaintedTops() const { return ! m_painted_tops.empty(); }
+
     Polygon m_bed_area;
 
 private:
@@ -485,6 +492,10 @@ private:
      * blocker instead of growing down through it. Set from support_blocker_strict.
      */
     bool m_strict_blockers = false;
+    /*!
+     * \brief Upward facing blocker paint per layer (the layer it is the top of). Only filled with support_blocker_strict.
+     */
+    std::vector<Polygons> m_painted_tops;
     /*!
      * \brief Radii that can be ignored by ceilRadius as they will never be requested, sorted.
      */

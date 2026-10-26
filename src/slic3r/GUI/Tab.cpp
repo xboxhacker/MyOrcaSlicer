@@ -2302,6 +2302,7 @@ void TabPrint::build()
         optgroup = page->new_optgroup(L("Line width"), L"param_line_width");
         optgroup->append_single_option_line("line_width","quality_settings_line_width");
         optgroup->append_single_option_line("initial_layer_line_width","quality_settings_line_width");
+        optgroup->append_single_option_line("initial_layer_line_overlap","quality_settings_line_width");
         optgroup->append_single_option_line("outer_wall_line_width","quality_settings_line_width");
         optgroup->append_single_option_line("inner_wall_line_width","quality_settings_line_width");
         optgroup->append_single_option_line("top_surface_line_width","quality_settings_line_width");
@@ -2311,6 +2312,8 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Seam"), L"param_seam");
         optgroup->append_single_option_line("seam_position", "quality_settings_seam#seam-position");
+        optgroup->append_single_option_line("seam_random_below", "quality_settings_seam#seam-position");
+        optgroup->append_single_option_line("seam_first_layer_front", "quality_settings_seam#seam-position");
         optgroup->append_single_option_line("staggered_inner_seams", "quality_settings_seam#staggered-inner-seams");
         optgroup->append_single_option_line("seam_gap","quality_settings_seam#seam-gap");
         optgroup->append_single_option_line("seam_slope_type", "quality_settings_seam#scarf-joint-seam");
@@ -2619,6 +2622,7 @@ void TabPrint::build()
 
         optgroup->append_single_option_line("support_object_xy_distance", "support_settings_advanced#supportobject-xy-distance");
         optgroup->append_single_option_line("support_object_first_layer_gap", "support_settings_advanced#supportobject-first-layer-gap");
+        optgroup->append_single_option_line("support_base_first_layer_z_offset", "support_settings_advanced#support-base-first-layer-z-offset");
         optgroup->append_single_option_line("bridge_no_support", "support_settings_advanced#dont-support-bridges");
         optgroup->append_single_option_line("max_bridge_length", "support_settings_advanced");
         optgroup->append_single_option_line("independent_support_layer_height", "support_settings_advanced#independent-support-layer-height");
@@ -2631,6 +2635,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("tree_support_branch_diameter", "support_settings_tree#branch-diameter");
         optgroup->append_single_option_line("tree_support_branch_diameter_organic", "support_settings_tree#branch-diameter");
         optgroup->append_single_option_line("tree_support_branch_diameter_angle", "support_settings_tree#branch-diameter-angle");
+        optgroup->append_single_option_line("tree_support_base_diameter", "support_settings_tree");
         optgroup->append_single_option_line("tree_support_branch_angle", "support_settings_tree#branch-angle");
         optgroup->append_single_option_line("tree_support_branch_angle_organic", "support_settings_tree#branch-angle");
         optgroup->append_single_option_line("tree_support_angle_slow", "support_settings_tree#preferred-branch-angle");

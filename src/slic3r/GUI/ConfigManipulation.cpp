@@ -614,9 +614,14 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
 
     bool have_perimeters = config->opt_int("wall_loops") > 0;
     for (auto el : { "extra_perimeters_on_overhangs", "ensure_vertical_shell_thickness", "detect_thin_wall", "detect_overhang_wall",
-        "seam_position", "staggered_inner_seams", "wall_sequence", "outer_wall_line_width",
+        "seam_position", "seam_random_below", "seam_first_layer_front", "staggered_inner_seams", "wall_sequence", "outer_wall_line_width",
         "inner_wall_speed", "outer_wall_speed", "small_perimeter_speed", "small_perimeter_threshold" })
         toggle_field(el, have_perimeters);
+
+    if (have_perimeters) {
+        const SeamPosition seam_pos = config->opt_enum<SeamPosition>("seam_position");
+        toggle_line("seam_random_below", seam_pos != spRandom);
+    }
 
     WallSequence _wall_sequence = config->option<ConfigOptionEnum<WallSequence>>("wall_sequence")->value;
     static WallSequence _wall_sequence_trig = WallSequence::Count;
@@ -786,7 +791,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
         "support_interface_pattern", "support_interface_top_layers", "support_interface_bottom_layers",
         "bridge_no_support", "max_bridge_length", "support_top_z_distance", "support_bottom_z_distance",
         "support_type", "support_on_build_plate_only", "support_critical_regions_only", "support_interface_not_for_body",
-        "support_object_xy_distance", "support_object_first_layer_gap", "independent_support_layer_height"})
+        "support_object_xy_distance", "support_object_first_layer_gap", "support_base_first_layer_z_offset",
+        "independent_support_layer_height"})
         toggle_field(el, have_support_material);
     toggle_field("support_threshold_angle", have_support_material && is_auto(support_type));
     toggle_field("support_threshold_overlap", config->opt_int("support_threshold_angle") == 0 && have_support_material && is_auto(support_type));
@@ -802,7 +808,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, co
     for (auto el : {"tree_support_branch_angle", "tree_support_branch_distance", "tree_support_branch_diameter", "tree_support_auto_brim", "tree_support_brim_width"})
         toggle_line(el, support_is_normal_tree);
     // settings specific to organic trees
-    for (auto el : {"tree_support_branch_angle_organic", "tree_support_branch_distance_organic", "tree_support_branch_diameter_organic", "tree_support_angle_slow", "tree_support_tip_diameter", "tree_support_top_rate", "tree_support_branch_diameter_angle"})
+    for (auto el : {"tree_support_branch_angle_organic", "tree_support_branch_distance_organic", "tree_support_branch_diameter_organic", "tree_support_angle_slow", "tree_support_tip_diameter", "tree_support_top_rate", "tree_support_branch_diameter_angle", "tree_support_base_diameter"})
         toggle_line(el, support_is_organic);
     // ORCA: Independent support layer height is not compatible with organic tree supports,
     // as they rely on the support layers being the same as the object layers to determine where to place branches.

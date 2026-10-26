@@ -1262,6 +1262,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "tree_support_branch_distance"
             || opt_key == "tree_support_branch_distance_organic"
             || opt_key == "tree_support_tip_diameter"
+            || opt_key == "tree_support_base_diameter"
             || opt_key == "tree_support_branch_diameter"
             || opt_key == "tree_support_branch_diameter_organic"
             || opt_key == "tree_support_branch_diameter_angle"
@@ -1327,6 +1328,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "top_surface_density"
             || opt_key == "bottom_surface_density"
             || opt_key == "initial_layer_line_width"
+            || opt_key == "initial_layer_line_overlap"
             || opt_key == "small_area_infill_flow_compensation"
             || opt_key == "ironing_small_area_flow_compensation"
             || opt_key == "lateral_lattice_angle_1"
@@ -1412,6 +1414,8 @@ bool PrintObject::invalidate_state_by_config_options(
             steps.emplace_back(posSlice);
         } else if (
                opt_key == "seam_position"
+            || opt_key == "seam_random_below"
+            || opt_key == "seam_first_layer_front"
             || opt_key == "seam_slope_type"
             || opt_key == "seam_slope_conditional"
             || opt_key == "scarf_angle_threshold"
@@ -1423,6 +1427,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "seam_slope_steps"
             || opt_key == "seam_slope_inner_walls"
             || opt_key == "support_speed"
+            || opt_key == "support_base_first_layer_z_offset"
             || opt_key == "support_interface_speed"
             || opt_key == "overhang_1_4_speed"
             || opt_key == "overhang_2_4_speed"
@@ -4469,7 +4474,7 @@ static void project_triangles_to_slabs(ConstLayerPtrsAdaptor layers, const index
 }
 
 void PrintObject::project_and_append_custom_facets(
-        bool seam, EnforcerBlockerType type, std::vector<Polygons>& out, std::vector<std::pair<Vec3f, Vec3f>>* vertical_points) const
+        bool seam, EnforcerBlockerType type, std::vector<Polygons>& out, std::vector<std::pair<Vec3f, Vec3f>>* vertical_points, bool include_top_surfaces) const
 {
     for (const ModelVolume* mv : this->model_object()->volumes)
         if (mv->is_model_part()) {
@@ -4482,9 +4487,26 @@ void PrintObject::project_and_append_custom_facets(
                         (this->trafo_centered() * mv->get_matrix()).cast<float>(),
                         seam, out);
                 else {
-                    std::vector<Polygons> projected;
+                    std::vector<Polygons> projected, projected_top;
                     // Support blockers or enforcers. Project downward facing painted areas upwards to their respective slicing plane.
-                    slice_mesh_slabs(custom_facets, zs_from_layers(this->layers()), this->trafo_centered() * mv->get_matrix(), nullptr, &projected, vertical_points, [](){});
+                    slice_mesh_slabs(custom_facets, zs_from_layers(this->layers()), this->trafo_centered() * mv->get_matrix(),
+                        include_top_surfaces ? &projected_top : nullptr, &projected, vertical_points, [](){});
+                    if (include_top_surfaces) {
+                        // Keep each projection's covered area. Appending the raw loops lets an
+                        // opposite winding from the top projection cancel the downward blocker.
+                        auto covered = [](Polygons polys) {
+                            for (Polygon &poly : polys)
+                                if (poly.area() < 0)
+                                    poly.reverse();
+                            return to_polygons(union_ex(polys));
+                        };
+                        for (size_t i = 0; i < projected.size(); ++ i) {
+                            Polygons merged = covered(std::move(projected[i]));
+                            if (i < projected_top.size())
+                                append(merged, covered(std::move(projected_top[i])));
+                            projected[i] = to_polygons(union_ex(merged));
+                        }
+                    }
                     // Merge these projections with the output, layer by layer.
                     assert(! projected.empty());
                     assert(out.empty() || out.size() == projected.size());

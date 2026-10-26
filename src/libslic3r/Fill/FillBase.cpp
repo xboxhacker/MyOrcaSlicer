@@ -153,7 +153,7 @@ void Fill::fill_surface_extrusion(const Surface* surface, const FillParams& para
             // been applied to f->spacing
         }
         else {
-            Flow new_flow = params.flow.with_spacing(this->spacing);
+            Flow new_flow = params.flow.with_spacing(float(this->spacing * this->flow_spacing_scale));
             flow_mm3_per_mm = new_flow.mm3_per_mm();
             flow_width = new_flow.width();
         }
@@ -170,7 +170,7 @@ void Fill::fill_surface_extrusion(const Surface* surface, const FillParams& para
         }
         size_t idx   = eec->entities.size();
         if (params.use_arachne) {
-            Flow new_flow = params.flow.with_spacing(float(this->spacing));
+            Flow new_flow = params.flow.with_spacing(float(this->spacing * this->flow_spacing_scale));
             variable_width(thick_polylines, params.extrusion_role, new_flow, eec->entities);
             thick_polylines.clear();
         }

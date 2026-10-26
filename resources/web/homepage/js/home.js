@@ -208,17 +208,25 @@ function SetMallUrl( strUrl )
 
 function ShowRecentFileList( pList )
 {
+	if (!Array.isArray(pList)) {
+		if (pList && typeof pList === "object")
+			pList = Object.keys(pList).map(function (key) { return pList[key]; });
+		else
+			pList = [];
+	}
 	let nTotal=pList.length;
 	
 	let strHtml='';
 	for(let n=0;n<nTotal;n++)
 	{
 		let OneFile=pList[n];
-		
+		if (!OneFile || !OneFile['path'])
+			continue;
+
 		let sPath=OneFile['path'];
-		let sImg=OneFile["image"] || sImages[sPath];
-		let sTime=OneFile['time'];
-		let sName=OneFile['project_name'];
+		let sImg=OneFile["image"] || sImages[sPath] || "img/d.png";
+		let sTime=OneFile['time'] || "";
+		let sName=OneFile['project_name'] || "";
 		sImages[sPath] = sImg;
 		
 		//let index=sPath.lastIndexOf('\\')>0?sPath.lastIndexOf('\\'):sPath.lastIndexOf('\/');

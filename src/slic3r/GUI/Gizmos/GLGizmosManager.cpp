@@ -1029,7 +1029,7 @@ bool GLGizmosManager::on_key(wxKeyEvent& evt)
         }
         else if (m_current == FdmSupports) {
             GLGizmoFdmSupports* fdm_support = dynamic_cast<GLGizmoFdmSupports*>(get_current());
-            if (fdm_support != nullptr && (keyCode == 'F' || keyCode == 'S' || keyCode == 'C' || keyCode == 'G')) {
+            if (fdm_support != nullptr && (keyCode == 'F' || keyCode == 'S' || keyCode == 'C' || keyCode == 'G' || keyCode == 'L')) {
                 processed = fdm_support->on_key_down_select_tool_type(keyCode);
             }
             if (processed) {

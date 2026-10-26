@@ -214,6 +214,8 @@ namespace ImGui
     const wchar_t CollapseArrowIcon        = 0x0842;
     const wchar_t ExpandArrowIcon          = 0x0843;
     const wchar_t CompleteIcon             = 0x0844;
+    const wchar_t LassoIcon                = 0x0845;
+    const wchar_t LassoDarkIcon            = 0x0846;
 
     // Orca
     const wchar_t PlayButton           = 0x0850;

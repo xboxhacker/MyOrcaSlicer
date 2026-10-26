@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <random>
 
 #include "libslic3r/Algorithm/LineSplit.hpp"
@@ -412,6 +413,21 @@ void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice
         ext_lines = std::move(out);
 }
 
+// Tiny point spacing turns every outer wall into a spray of micro-moves.
+// Klipper (K1 / K1 Max) will timer-too-close / stall, and a 0.8 mm nozzle
+// cannot resolve 0.1 mm zigzags — it just deposits a zit at every corner.
+static coord_t min_safe_fuzzy_point_distance(const PerimeterGenerator& g)
+{
+    double nozzle = 0.4;
+    if (g.print_config && !g.print_config->nozzle_diameter.values.empty()) {
+        nozzle = *std::max_element(g.print_config->nozzle_diameter.values.begin(),
+                                   g.print_config->nozzle_diameter.values.end());
+    }
+    if (nozzle < 0.1)
+        nozzle = 0.4;
+    return scaled<coord_t>(std::max(0.2, 0.4 * nozzle));
+}
+
 void group_region_by_fuzzify(PerimeterGenerator& g)
 {
     g.regions_by_fuzzify.clear();
@@ -423,13 +439,15 @@ void group_region_by_fuzzify(PerimeterGenerator& g)
         SurfacesPtr     surfaces;
     };
 
+    const coord_t min_point_distance = min_safe_fuzzy_point_distance(g);
+
     std::vector<ConfigSurfaces> regions;
     regions.reserve(g.compatible_regions->size());
     for (auto region : *g.compatible_regions) {
         const auto&           region_config = region->region().config();
         const FuzzySkinConfig cfg{region_config.fuzzy_skin,
                                   scaled<coord_t>(region_config.fuzzy_skin_thickness.value),
-                                  scaled<coord_t>(region_config.fuzzy_skin_point_distance.value),
+                                  std::max(scaled<coord_t>(region_config.fuzzy_skin_point_distance.value), min_point_distance),
                                   region_config.fuzzy_skin_first_layer,
                                   region_config.fuzzy_skin_noise_type,
                                   region_config.fuzzy_skin_scale,

@@ -52,6 +52,7 @@ private:
     std::vector<std::pair<wxString, wxString>> m_shortcuts_triangle;
     // Contains all shortcuts in the format of {shortcut, description}, e.g. {alt + _L("Left mouse button"), _L("Part_selection")}
     std::vector<std::pair<wxString, wxString>> m_shortcuts_smart_fill;
+    std::vector<std::pair<wxString, wxString>> m_shortcuts_lasso;
 };
 
 } // namespace Slic3r::GUI

@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <memory>
+#include <algorithm>
 
 #include "../ClipperUtils.hpp"
 #include "../Geometry.hpp"
@@ -1375,6 +1376,26 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         }
 		if (surface_fill.params.pattern == ipGrid)
 			params.can_reverse = false;
+
+        // First layer line overlap. The quality line width stays exactly as configured.
+        // The next line is moved into the previous line by this percent of that width.
+        // A one-layer part is tagged as a top surface, and a first layer with no bottom shells is solid infill.
+        // Both still sit on the plate. 0% leaves spacing and width unchanged.
+        double overlapped_spacing = surface_fill.params.spacing;
+        const bool bed_solid = this->bottom_z() <= EPSILON && !surface_fill.params.bridge &&
+            (surface_fill.params.extrusion_role == erBottomSurface ||
+             surface_fill.params.extrusion_role == erTopSolidInfill ||
+             surface_fill.params.extrusion_role == erSolidInfill);
+        if (bed_solid && f->print_object_config) {
+            const double overlap = std::clamp(f->print_object_config->initial_layer_line_overlap.value * 0.01, 0.0, 0.5);
+            const double overlap_mm = std::max(surface_fill.params.flow.width(), 0.f) * overlap;
+            const double min_spacing = std::max(surface_fill.params.spacing * 0.5, 0.01);
+            overlapped_spacing = std::max(surface_fill.params.spacing - overlap_mm, min_spacing);
+        }
+        // Flow is computed from spacing * flow_spacing_scale, which is the original spacing,
+        // so the extruded width stays the quality line width.
+        f->flow_spacing_scale = surface_fill.params.spacing / overlapped_spacing;
+
 		for (ExPolygon& expoly : surface_fill.expolygons) {
 
       f->no_overlap_expolygons = intersection_ex(surface_fill.no_overlap_expolygons, ExPolygons() = {expoly}, ApplySafetyOffset::Yes);
@@ -1384,7 +1405,7 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
             }
 
 			// Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.
-			f->spacing = surface_fill.params.spacing;
+			f->spacing = overlapped_spacing;
 			surface_fill.surface.expolygon = std::move(expoly);
 
 			if(surface_fill.params.bridge && surface_fill.surface.is_external() && surface_fill.params.density > 99.0){

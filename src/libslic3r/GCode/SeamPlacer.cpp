@@ -941,6 +941,26 @@ size_t pick_nearest_seam_point_index(const std::vector<SeamCandidate> &perimeter
   return seam_index;
 }
 
+// Front-most (lowest Y) point of the perimeter, still respecting enforcers, blockers and overhang avoidance.
+size_t pick_front_seam_point_index(const std::vector<SeamCandidate> &perimeter_points, size_t start_index) {
+  size_t end_index = perimeter_points[start_index].perimeter.end_index;
+  size_t seam_index = start_index;
+  for (size_t index = start_index + 1; index < end_index; ++index) {
+    const SeamCandidate &a = perimeter_points[index];
+    const SeamCandidate &b = perimeter_points[seam_index];
+    if (a.type != b.type) {
+      if (a.type > b.type)
+        seam_index = index;
+    } else if (a.overhang != b.overhang && (a.overhang > 0.0f || b.overhang > 0.0f)) {
+      if (a.overhang < b.overhang)
+        seam_index = index;
+    } else if (a.position.y() < b.position.y()) {
+      seam_index = index;
+    }
+  }
+  return seam_index;
+}
+
 // picks random seam point uniformly, respecting enforcers blockers and overhang avoidance.
 void pick_random_seam_point(const std::vector<SeamCandidate> &perimeter_points, size_t start_index) {
   SeamComparator comparator { spRandom };
@@ -1491,6 +1511,19 @@ void SeamPlacer::init(const Print &print, std::function<void(void)> throw_if_can
           << "SeamPlacer: align_seam_points : end";
     }
 
+    const double random_below = po->config().seam_random_below.value;
+    if (random_below > 0. && configured_seam_preference != spRandom) {
+      std::vector<PrintObjectSeamData::LayerSeams> &layers = m_seam_per_object[po].layers;
+      for (size_t layer_idx = 0; layer_idx < layers.size(); ++layer_idx) {
+        if (po->get_layer(layer_idx)->print_z > random_below + EPSILON)
+          continue;
+        std::vector<SeamCandidate> &layer_perimeter_points = layers[layer_idx].points;
+        for (size_t current = 0; current < layer_perimeter_points.size();
+             current = layer_perimeter_points[current].perimeter.end_index)
+          pick_random_seam_point(layer_perimeter_points, current);
+      }
+    }
+
 #ifdef DEBUG_FILES
     debug_export_points(m_seam_per_object[po].layers, po->bounding_box(), comparator);
 #endif
@@ -1546,8 +1579,11 @@ void SeamPlacer::place_seam(const Layer *layer, ExtrusionLoop &loop,
 
   Vec3f seam_position;
   size_t seam_index;
-  if (const Perimeter &perimeter = layer_perimeters.points[closest_perimeter_point_index].perimeter;
-      perimeter.finalized) {
+  const Perimeter &perimeter = layer_perimeters.points[closest_perimeter_point_index].perimeter;
+  if (layer->id() == 0 && po->config().seam_first_layer_front) {
+    seam_index = pick_front_seam_point_index(layer_perimeters.points, perimeter.start_index);
+    seam_position = layer_perimeters.points[seam_index].position;
+  } else if (perimeter.finalized) {
     seam_position = perimeter.final_seam_position;
     seam_index = perimeter.seam_index;
   } else {

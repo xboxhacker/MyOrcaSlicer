@@ -206,6 +206,44 @@ public:
         float m_height;
     };
 
+    // Screen-space polygon cursor. Mesh points are projected by mesh_to_ndc (projection * view * object trafo)
+    // and tested against a polygon given in normalized device coordinates.
+    class Lasso : public Cursor
+    {
+    public:
+        Lasso() = delete;
+        // edge_limit_world: triangles along the outline are split down to this edge length (world units).
+        explicit Lasso(std::vector<Vec2f> polygon_ndc, const Matrix4f &mesh_to_ndc, const Vec3f &camera_dir_world, float edge_limit_world, const Transform3d &trafo_, const ClippingPlane &clipping_plane_);
+        ~Lasso() override = default;
+
+        bool is_mesh_point_inside(const Vec3f &point) const override;
+        bool is_pointer_in_triangle(const Vec3f &p1, const Vec3f &p2, const Vec3f &p3) const override;
+        bool is_edge_inside_cursor(const Triangle &tr, const std::vector<Vertex> &vertices) const override;
+        bool is_facet_visible(int facet_idx, const std::vector<Vec3f> &face_normals) const override
+        {
+            return TriangleSelector::Cursor::is_facet_visible(*this, facet_idx, face_normals);
+        }
+
+    private:
+        bool project(const Vec3f &point, Vec2f &out) const;
+        bool is_ndc_point_inside(const Vec2f &pt) const;
+        int  cell_x(float x) const;
+        int  cell_y(float y) const;
+
+        std::vector<Vec2f> m_polygon;
+        Matrix4f           m_mesh_to_ndc;
+        float              m_edge_limit;
+        Vec2f              m_min;
+        Vec2f              m_max;
+        // Uniform grid over the polygon bounding box. Segment i runs from m_polygon[i - 1] to m_polygon[i].
+        int                           m_grid_size = 1;
+        Vec2f                         m_inv_cell_size;
+        std::vector<std::vector<int>> m_cells; // segments overlapping each cell, index x + y * m_grid_size
+        std::vector<std::vector<int>> m_rows;  // segments overlapping each row of cells
+
+        friend TriangleSelector;
+    };
+
     class Capsule3D : public DoublePointCursor
     {
     public:

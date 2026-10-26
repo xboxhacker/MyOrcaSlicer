@@ -133,6 +133,11 @@ void GLGizmoPainterBase::render_triangles(const Selection& selection) const
 
 void GLGizmoPainterBase::render_cursor()
 {
+    if (m_tool_type == ToolType::LASSO) {
+        render_lasso();
+        return;
+    }
+
     // First check that the mouse pointer is on an object.
     const ModelObject* mo = m_c->selection_info()->model_object();
     const Selection& selection = m_parent.get_selection();
@@ -302,6 +307,131 @@ void GLGizmoPainterBase::render_cursor_circle()
     glsafe(::glEnable(GL_DEPTH_TEST));
 }
 
+void GLGizmoPainterBase::render_lasso()
+{
+    if (m_lasso_points.size() < 2)
+        return;
+
+    const std::array<int, 4>& viewport = wxGetApp().plater()->get_camera().get_viewport();
+    if (viewport[2] <= 0 || viewport[3] <= 0)
+        return;
+    auto to_ndc = [&viewport](const Vec2d& p) {
+        return Vec2f(float(2.0 * (p.x() - viewport[0]) / viewport[2] - 1.0), float(1.0 - 2.0 * (p.y() - viewport[1]) / viewport[3]));
+    };
+
+    GLModel::Geometry init_data;
+    init_data.format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P2 };
+    init_data.reserve_vertices(2 * m_lasso_points.size());
+    init_data.reserve_indices(2 * m_lasso_points.size());
+    for (size_t i = 0; i < m_lasso_points.size(); ++i) {
+        init_data.add_vertex(to_ndc(m_lasso_points[i]));
+        init_data.add_vertex(to_ndc(m_lasso_points[(i + 1) % m_lasso_points.size()]));
+        init_data.add_line(unsigned(2 * i), unsigned(2 * i + 1));
+    }
+    m_lasso.reset();
+    m_lasso.init_from(std::move(init_data));
+
+    ColorRGBA color = m_button_down == Button::Right ? get_cursor_sphere_right_button_color() : get_cursor_sphere_left_button_color();
+    color.a(1.0f);
+    m_lasso.set_color(color);
+
+#if SLIC3R_OPENGL_ES
+    GLShaderProgram* shader = wxGetApp().get_shader("dashed_lines");
+#else
+    GLShaderProgram* shader = OpenGLManager::get_gl_info().is_core_profile() ? wxGetApp().get_shader("dashed_thick_lines") : wxGetApp().get_shader("flat");
+    if (!OpenGLManager::get_gl_info().is_core_profile())
+        glsafe(::glLineWidth(1.5f));
+#endif // SLIC3R_OPENGL_ES
+    if (shader == nullptr)
+        return;
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    shader->start_using();
+    shader->set_uniform("view_model_matrix", Transform3d::Identity());
+    shader->set_uniform("projection_matrix", Transform3d::Identity());
+#if !SLIC3R_OPENGL_ES
+    if (OpenGLManager::get_gl_info().is_core_profile()) {
+#endif // !SLIC3R_OPENGL_ES
+        shader->set_uniform("viewport_size", Vec2d(double(viewport[2]), double(viewport[3])));
+        shader->set_uniform("width", 0.25f);
+        shader->set_uniform("gap_size", 0.0f);
+#if !SLIC3R_OPENGL_ES
+    }
+#endif // !SLIC3R_OPENGL_ES
+    m_lasso.render();
+    shader->stop_using();
+    glsafe(::glEnable(GL_DEPTH_TEST));
+}
+
+void GLGizmoPainterBase::apply_lasso()
+{
+    if (m_lasso_points.size() < 3)
+        return;
+
+    const Camera& camera = wxGetApp().plater()->get_camera();
+    const std::array<int, 4>& viewport = camera.get_viewport();
+    if (viewport[2] <= 0 || viewport[3] <= 0)
+        return;
+
+    // Drop outline points that deviate less than a pixel from a straight run; every remaining segment is tested per triangle.
+    constexpr double px_to_coord = 100.;
+    Points outline;
+    outline.reserve(m_lasso_points.size() + 1);
+    for (const Vec2d& p : m_lasso_points)
+        outline.emplace_back(coord_t(p.x() * px_to_coord), coord_t(p.y() * px_to_coord));
+    outline.emplace_back(outline.front());
+    outline = MultiPoint::_douglas_peucker(outline, px_to_coord);
+    outline.pop_back();
+    if (outline.size() < 3)
+        return;
+
+    std::vector<Vec2f> polygon_ndc;
+    polygon_ndc.reserve(outline.size());
+    for (const Point& p : outline)
+        polygon_ndc.emplace_back(float(2.0 * (p.x() / px_to_coord - viewport[0]) / viewport[2] - 1.0),
+                                 float(1.0 - 2.0 * (p.y() / px_to_coord - viewport[1]) / viewport[3]));
+
+    const ModelObject* mo = m_c->selection_info()->model_object();
+    const Selection& selection = m_parent.get_selection();
+    const ModelInstance* mi = mo->instances[selection.get_instance_idx()];
+    const Transform3d instance_trafo = m_parent.get_canvas_type() == GLCanvas3D::CanvasAssembleView ?
+        mi->get_assemble_transformation().get_matrix() : mi->get_transformation().get_matrix();
+    const Transform3d instance_trafo_not_translate = m_parent.get_canvas_type() == GLCanvas3D::CanvasAssembleView ?
+        mi->get_assemble_transformation().get_matrix_no_offset() : mi->get_transformation().get_matrix_no_offset();
+    const Matrix4d world_to_ndc = camera.get_projection_matrix().matrix() * camera.get_view_matrix().matrix();
+    const Vec3f camera_dir = camera.get_dir_forward().cast<float>();
+
+    int mesh_id = -1;
+    for (const ModelVolume* mv : mo->volumes) {
+        if (!mv->is_model_part())
+            continue;
+        ++mesh_id;
+        Transform3d trafo_matrix = instance_trafo * mv->get_matrix();
+        if (m_parent.get_canvas_type() == GLCanvas3D::CanvasAssembleView)
+            trafo_matrix.translate(mv->get_transformation().get_offset() * (GLVolume::explosion_ratio - 1.0) + mi->get_offset_to_assembly() * (GLVolume::explosion_ratio - 1.0));
+        const Transform3d trafo_matrix_not_translate = instance_trafo_not_translate * mv->get_matrix_no_offset();
+
+        // Split the outline only as finely as it was drawn: about one screen pixel at the part's depth.
+        const Vec3d   center   = trafo_matrix * mv->mesh().bounding_box().center();
+        const Vec4d   c0       = world_to_ndc * Vec4d(center.x(), center.y(), center.z(), 1.0);
+        const Vec3d   right    = center + camera.get_dir_right();
+        const Vec4d   c1       = world_to_ndc * Vec4d(right.x(), right.y(), right.z(), 1.0);
+        float         edge_limit = 0.1f;
+        if (c0.w() > EPSILON && c1.w() > EPSILON) {
+            const double px_per_mm = std::abs(c1.x() / c1.w() - c0.x() / c0.w()) * 0.5 * viewport[2];
+            if (px_per_mm > EPSILON)
+                edge_limit = float(std::clamp(1.0 / px_per_mm, 0.1, 2.0));
+        }
+
+        const Matrix4f mesh_to_ndc = (world_to_ndc * trafo_matrix.matrix()).cast<float>();
+        auto cursor = std::make_unique<TriangleSelector::Lasso>(polygon_ndc, mesh_to_ndc, camera_dir, edge_limit, trafo_matrix,
+                                                                get_clipping_plane_in_volume_coordinates(trafo_matrix));
+        m_triangle_selectors[mesh_id]->select_patch(0, std::move(cursor), m_lasso_state, trafo_matrix_not_translate, m_triangle_splitting_enabled,
+                                                    m_paint_on_overhangs_only ? m_highlight_by_angle_threshold_deg : 0.f);
+        m_triangle_selectors[mesh_id]->request_update_render_data(true);
+    }
+    m_parent.set_as_dirty();
+}
 
 void GLGizmoPainterBase::render_cursor_sphere(const Transform3d& trafo) const
 {
@@ -720,6 +850,36 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d& mous
     if (action == SLAGizmoEventType::ResetClippingPlane) {
         m_c->object_clipper()->set_position_by_ratio(-1., false);
         return true;
+    }
+
+    if (m_tool_type == ToolType::LASSO) {
+        if (action == SLAGizmoEventType::LeftDown || action == SLAGizmoEventType::RightDown) {
+            const bool right = action == SLAGizmoEventType::RightDown;
+            if (m_triangle_selectors.empty() || (right && this->get_right_button_state_type() == EnforcerBlockerType(-1)))
+                return false;
+            m_button_down = right ? Button::Right : Button::Left;
+            m_lasso_state = shift_down ? EnforcerBlockerType::NONE : (right ? this->get_right_button_state_type() : this->get_left_button_state_type());
+            m_lasso_points.assign(1, mouse_position);
+            m_parent.set_as_dirty();
+            return true;
+        }
+        if (action == SLAGizmoEventType::Dragging && m_button_down != Button::None) {
+            if (m_lasso_points.empty() || (mouse_position - m_lasso_points.back()).squaredNorm() > 9.)
+                m_lasso_points.emplace_back(mouse_position);
+            m_parent.set_as_dirty();
+            return true;
+        }
+        if ((action == SLAGizmoEventType::LeftUp || action == SLAGizmoEventType::RightUp) && m_button_down != Button::None) {
+            // Ctrl pressed mid-drag hands the mouse to the camera; drop the lasso instead of painting a partial one.
+            if (control_down) {
+                m_lasso_points.clear();
+                m_button_down = Button::None;
+                m_parent.set_as_dirty();
+                return true;
+            }
+            apply_lasso();
+            m_lasso_points.clear();
+        }
     }
 
     if (action == SLAGizmoEventType::LeftDown

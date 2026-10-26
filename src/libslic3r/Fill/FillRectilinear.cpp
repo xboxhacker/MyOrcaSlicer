@@ -3722,7 +3722,7 @@ Polylines FillMonotonicLines::fill_surface(const Surface *surface, const FillPar
             // been applied to f->spacing
         }
         else {
-            new_flow = params.flow.with_spacing(this->spacing);
+            new_flow = params.flow.with_spacing(float(this->spacing * this->flow_spacing_scale));
             flow_mm3_per_mm = new_flow.mm3_per_mm();
             flow_width = new_flow.width();
         }
@@ -3961,7 +3961,7 @@ void FillLockedZag::fill_surface_extrusion(const Surface *surface, const FillPar
                     // so we can safely ignore the slight variation that might have
                     // been applied to f->spacing
                 } else {
-                    Flow new_flow   = poly_with_flow.second.with_spacing(this->spacing);
+                    Flow new_flow   = poly_with_flow.second.with_spacing(float(this->spacing * this->flow_spacing_scale));
                     flow_mm3_per_mm = new_flow.mm3_per_mm();
                     flow_width      = new_flow.width();
                 }

@@ -13,12 +13,15 @@
 #include "../ClipperUtils.hpp"
 #include "../Flow.hpp"
 #include "../Layer.hpp"
+#include "../Model.hpp"
 #include "../Point.hpp"
 #include "../Print.hpp"
 #include "../PrintConfig.hpp"
 #include "../Utils.hpp"
 #include "../format.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <string_view>
 
 #include <boost/log/trivial.hpp>
@@ -114,6 +117,54 @@ TreeModelVolumes::TreeModelVolumes(
         // change support resting on the model for rafted prints that do not ask for strict blockers.
         if (m_strict_blockers && ! m_anti_overhang.empty() && ! m_raft_layers.empty())
             m_anti_overhang.insert(m_anti_overhang.begin(), m_raft_layers.size(), Polygons{});
+        // Upward facing blocker paint, indexed by the layer whose top it is (same indexing as the
+        // collision layers). Trees may not rest on it: it is removed from the placeable areas, so the
+        // stock avoidance-to-model steers branches to unpainted surface or the bed.
+        if (m_strict_blockers) {
+            // Project each upward painted triangle on its own. A slab outline of the whole painted
+            // patch closes across an unpainted pad and then forbids landing there.
+            const std::vector<float> zs = zs_from_layers(print_object.layers());
+            const double scale_xy = 1. / SCALING_FACTOR;
+            for (const ModelVolume *mv : print_object.model_object()->volumes)
+                if (mv->is_model_part()) {
+                    const indexed_triangle_set facets = mv->supported_facets.get_facets_strict(*mv, EnforcerBlockerType::BLOCKER);
+                    if (facets.indices.empty())
+                        continue;
+                    Transform3d trafo = print_object.trafo_centered() * mv->get_matrix();
+                    const bool  flip  = trafo.matrix().block<3, 3>(0, 0).determinant() < 0;
+                    trafo.prescale(Vec3d(scale_xy, scale_xy, 1.));
+                    const auto tf = trafo.cast<float>();
+                    if (m_painted_tops.empty())
+                        m_painted_tops.assign(m_raft_layers.size() + zs.size(), Polygons{});
+                    for (const stl_triangle_vertex_indices &tri : facets.indices) {
+                        const Vec3f a = tf * facets.vertices[tri(0)];
+                        const Vec3f b = tf * facets.vertices[tri(1)];
+                        const Vec3f c = tf * facets.vertices[tri(2)];
+                        const float nz = (b.x() - a.x()) * (c.y() - a.y()) - (b.y() - a.y()) * (c.x() - a.x());
+                        if (flip ? nz >= 0.f : nz <= 0.f)
+                            continue;
+                        const float z = (a.z() + b.z() + c.z()) / 3.f;
+                        const auto  above = std::upper_bound(zs.begin(), zs.end(), z);
+                        if (above == zs.begin())
+                            continue;
+                        const size_t slab = size_t(above - zs.begin()) - 1;
+                        if (m_raft_layers.size() + slab >= m_painted_tops.size())
+                            continue;
+                        Polygon poly;
+                        poly.points = {
+                            Point(coord_t(std::lround(a.x())), coord_t(std::lround(a.y()))),
+                            Point(coord_t(std::lround(b.x())), coord_t(std::lround(b.y()))),
+                            Point(coord_t(std::lround(c.x())), coord_t(std::lround(c.y())))
+                        };
+                        if (std::abs(poly.area()) < sqr(scaled<double>(0.05)))
+                            continue;
+                        m_painted_tops[m_raft_layers.size() + slab].emplace_back(std::move(poly));
+                    }
+                }
+            for (Polygons &layer : m_painted_tops)
+                if (! layer.empty())
+                    layer = union_(layer);
+        }
         m_current_outline_idx = 0;
 
         m_layer_outlines.emplace_back(mesh_settings, std::vector<Polygons>{});
@@ -554,7 +605,7 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
             if (calculate_placable) {
                 // Now calculate the placable areas.
                 tbb::parallel_for(tbb::blocked_range<LayerIndex>(std::max(z_distance_bottom_layers + 1, data.begin()), data.end()),
-                    [&collision_areas_offsetted, &outlines, &anti_overhang = m_anti_overhang, processing_last_mesh,
+                    [&collision_areas_offsetted, &outlines, &anti_overhang = m_anti_overhang, &painted_tops = m_painted_tops, processing_last_mesh,
                      min_resolution = m_min_resolution, z_distance_bottom_layers, xy_distance, &data_placeable, &throw_on_cancel]
                 (const tbb::blocked_range<LayerIndex>& range) {
                     for (LayerIndex layer_idx = range.begin(); layer_idx != range.end(); ++ layer_idx) {
@@ -566,6 +617,9 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
                             // Inflate the surface to sit on by the separation distance to increase chance of a support being placed on a sloped surface.
                             offset(below, xy_distance), 
                             layer_idx_below < int(anti_overhang.size()) ? union_(current, anti_overhang[layer_idx_below]) : current);
+                        if (layer_idx_below < int(painted_tops.size()) && ! painted_tops[layer_idx_below].empty())
+                            // Raw paint only. Growing it would erase a small unpainted pad left as a landing spot.
+                            placable = diff(placable, painted_tops[layer_idx_below]);
                         auto &dst     = data_placeable[layer_idx];
                         if (processing_last_mesh) {
                             if (! dst.empty())

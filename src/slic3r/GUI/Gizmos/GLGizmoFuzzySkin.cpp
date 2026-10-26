@@ -74,6 +74,13 @@ bool GLGizmoFuzzySkin::on_init()
         clipping_shortcut
     };
 
+    m_shortcuts_lasso = {
+        {_L("Left mouse button") + " " + _L("drag"),         m_desc["add_fuzzy_skin"]},
+        {shift + _L("Left mouse button") + " " + _L("drag"), m_desc["remove_fuzzy_skin"]},
+        {ctrl + _L("Left mouse button") + " " + _L("drag"),  _L("Rotate view")},
+        clipping_shortcut
+    };
+
     return true;
 }
 
@@ -104,6 +111,7 @@ void GLGizmoFuzzySkin::render_tooltip_button(float x, float y)
         case ToolType::BRUSH: return m_cursor_type == TriangleSelector::POINTER ? m_shortcuts_triangle : m_shortcuts_brush;
 
         case ToolType::SMART_FILL: return m_shortcuts_smart_fill;
+        case ToolType::LASSO: return m_shortcuts_lasso;
         default: return {};
         }
     };
@@ -189,14 +197,14 @@ void GLGizmoFuzzySkin::on_render_input_window(float x, float y, float bottom_lim
     ImGui::AlignTextToFramePadding();
     m_imgui->text(m_desc["tool_type"]);
 
-    std::array<wchar_t, 4> tool_ids;
-    tool_ids = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::TriangleButtonIcon, ImGui::FillButtonIcon };
-    std::array<wchar_t, 4> icons;
+    std::array<wchar_t, 5> tool_ids;
+    tool_ids = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::TriangleButtonIcon, ImGui::FillButtonIcon, ImGui::LassoIcon };
+    std::array<wchar_t, 5> icons;
     if (m_is_dark_mode)
-        icons = { ImGui::CircleButtonDarkIcon, ImGui::SphereButtonDarkIcon, ImGui::TriangleButtonDarkIcon, ImGui::FillButtonDarkIcon };
+        icons = { ImGui::CircleButtonDarkIcon, ImGui::SphereButtonDarkIcon, ImGui::TriangleButtonDarkIcon, ImGui::FillButtonDarkIcon, ImGui::LassoDarkIcon };
     else
-        icons = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::TriangleButtonIcon, ImGui::FillButtonIcon };
-    std::array<wxString, 4> tool_tips = { _L("Circle"), _L("Sphere"), _L("Triangle"), _L("Fill") };
+        icons = { ImGui::CircleButtonIcon, ImGui::SphereButtonIcon, ImGui::TriangleButtonIcon, ImGui::FillButtonIcon, ImGui::LassoIcon };
+    std::array<wxString, 5> tool_tips = { _L("Circle"), _L("Sphere"), _L("Triangle"), _L("Fill"), _L("Lasso") };
     for (int i = 0; i < tool_ids.size(); i++) {
         //std::string  str_label = std::string("");
         //std::wstring btn_name  = icons[i] + boost::nowide::widen(str_label);
@@ -250,6 +258,8 @@ void GLGizmoFuzzySkin::on_render_input_window(float x, float y, float bottom_lim
     } else if (m_current_tool == ImGui::TriangleButtonIcon) {
         m_cursor_type = TriangleSelector::CursorType::POINTER;
         m_tool_type   = ToolType::BRUSH;
+    } else if (m_current_tool == ImGui::LassoIcon) {
+        m_tool_type = ToolType::LASSO;
     } else {
         assert(m_current_tool == ImGui::FillButtonIcon);
         m_cursor_type = TriangleSelector::CursorType::POINTER;
