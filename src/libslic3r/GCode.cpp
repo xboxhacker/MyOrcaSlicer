@@ -6332,15 +6332,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
 
     const ExtrusionPathSloped* sloped = dynamic_cast<const ExtrusionPathSloped*>(&path);
     const bool should_apply_staggered_offset = sloped == nullptr && !path.z_contoured && !is_approx(path.z_offset, 0.0f);
-    // Raise bed-touching support bases only on the first layer (on_first_layer requires bottom_z ~ 0).
-    // Model first-layer Z and all later layers stay at m_nominal_z.
-    const bool support_first_layer_z_lift =
-        this->on_first_layer() &&
-        (path.role() == erSupportMaterial || path.role() == erSupportMaterialInterface || path.role() == erSupportTransition) &&
-        m_config.support_base_first_layer_z_offset.value > EPSILON;
-    const double support_z_extra = support_first_layer_z_lift ? m_config.support_base_first_layer_z_offset.value : 0.;
     // path.z_offset is expressed in layer-height units.
-    const double target_z = (should_apply_staggered_offset ? m_nominal_z + path.z_offset * path.height : m_nominal_z) + support_z_extra;
+    const double target_z = should_apply_staggered_offset ? m_nominal_z + path.z_offset * path.height : m_nominal_z;
 
     const auto get_sloped_z = [&sloped, this](double z_ratio) {
         const auto height = sloped->height;
@@ -6366,7 +6359,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
             z =  get_sloped_z(sloped->slope_begin.z_ratio);
         } else if (path.z_contoured && !path.polyline.lines().empty()) {
             z = unscale_(path.polyline.lines().begin()->a.z()) + m_nominal_z;
-        } else if (should_apply_staggered_offset || support_first_layer_z_lift) {
+        } else if (should_apply_staggered_offset) {
             z = target_z;
         }
 
@@ -6391,8 +6384,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, std::string description, 
     if (!path.z_contoured && sloped == nullptr) {
         double current_z = m_writer.get_position().z();
         if (GCodeFormatter::quantize_xyzf(current_z) != GCodeFormatter::quantize_xyzf(target_z)) {
-            const char *z_comment = support_first_layer_z_lift ? "set Z for support base first layer offset"
-                : (should_apply_staggered_offset ? "set Z for staggered perimeter" : "reset Z after path-specific offset");
+            const char *z_comment = should_apply_staggered_offset ? "set Z for staggered perimeter" : "reset Z after path-specific offset";
             gcode += this->writer().travel_to_z(target_z, z_comment, true);
         }
     }
@@ -7479,17 +7471,10 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
                 gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.points[i]), comment);
             }
         } else {
-            // When support bases are raised on the first layer, keep XY travels at that raised height
-            // so the nozzle does not skim across taller support while moving to the lower model Z.
-            // Extrusion still drops to the path target_z in _extrude after arriving.
-            const double first_layer_travel_z =
-                (this->on_first_layer() && m_config.support_base_first_layer_z_offset.value > EPSILON)
-                    ? m_nominal_z + m_config.support_base_first_layer_z_offset.value
-                    : m_nominal_z;
             if (travel.size() == 2) {
                 // No extra movements emitted by avoid_crossing_perimeters, simply move to the end point with z change
                 const auto& dest2d = this->point_to_gcode(travel.points.back());
-                const double travel_z = z == DBL_MAX ? first_layer_travel_z : std::max(z, first_layer_travel_z);
+                const double travel_z = z == DBL_MAX ? m_nominal_z : z;
                 Vec3d dest3d(dest2d(0), dest2d(1), travel_z);
                 gcode += m_writer.travel_to_xyz(dest3d, comment, m_need_change_layer_lift_z);
                 m_need_change_layer_lift_z = false;
@@ -7498,15 +7483,15 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
                 // ratio at the last point
                 for (size_t i = 1; i < travel.size(); ++i) {
                     if (i == 1) {
-                        // Lift to travel z at beginning (raised on first layer when support-base offset is set)
+                        // Lift to normal layer height at beginning
                         Vec2d dest2d = this->point_to_gcode(travel.points[i]);
-                        Vec3d dest3d(dest2d(0), dest2d(1), first_layer_travel_z);
+                        Vec3d dest3d(dest2d(0), dest2d(1), m_nominal_z);
                         gcode += m_writer.travel_to_xyz(dest3d, comment, m_need_change_layer_lift_z);
                         m_need_change_layer_lift_z = false;
                     } else if (z != DBL_MAX && i == travel.size() - 1) {
                         // Apply z_ratio for the very last point
                         Vec2d dest2d = this->point_to_gcode(travel.points[i]);
-                        Vec3d dest3d(dest2d(0), dest2d(1), std::max(z, first_layer_travel_z));
+                        Vec3d dest3d(dest2d(0), dest2d(1), z);
                         gcode += m_writer.travel_to_xyz(dest3d, comment);
                     } else {
                         // For all points in between, no z change

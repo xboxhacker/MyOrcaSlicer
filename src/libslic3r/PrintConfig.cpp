@@ -6196,10 +6196,10 @@ void PrintConfigDef::init_fff_params()
     def = this->add("support_base_first_layer_z_offset", coFloat);
     def->label = L("Support base first layer Z offset");
     def->category = L("Support");
-    def->tooltip = L("Raises bed-touching support bases on the first layer only, so they stick less "
-                     "when the model first layer is printed with extra squish. "
-                     "The model first layer and all later layers are unchanged. "
-                     "Typical values are 0.05–0.15 mm. Set to 0 to disable.");
+    def->tooltip = L("Moves the bed-touching support base up by this distance. "
+                     "That is the wide disk on the build plate. The model first layer stays put. "
+                     "Automatic support that would sit under the moved disk is not printed. "
+                     "Set to 0 to leave the base on the plate.");
     def->sidetext = L("mm");
     def->min = 0;
     def->max = 1;

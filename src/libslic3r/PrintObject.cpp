@@ -895,6 +895,40 @@ void PrintObject::generate_support_material()
 
             this->_generate_support_material();
             m_print->throw_if_canceled();
+            // The green support-base disk is the bed-touching support layer. Move that
+            // layer up by the offset so the preview and the nozzle share the same Z.
+            // Drop any automatic support that would then sit underneath the disk.
+            if (m_shared_object == nullptr && m_config.support_base_first_layer_z_offset.value > EPSILON && !m_support_layers.empty()) {
+                const size_t raft_layers = m_slicing_params.raft_layers();
+                SupportLayer *base = nullptr;
+                for (SupportLayer *layer : m_support_layers) {
+                    if (layer == nullptr || (raft_layers > 0 && layer->id() < raft_layers))
+                        continue;
+                    if (std::abs(layer->bottom_z()) <= EPSILON) {
+                        base = layer;
+                        break;
+                    }
+                }
+                if (base != nullptr) {
+                    const double raised_z = base->print_z + m_config.support_base_first_layer_z_offset.value;
+                    SupportLayerPtrs kept;
+                    kept.reserve(m_support_layers.size());
+                    for (SupportLayer *layer : m_support_layers) {
+                        const bool is_raft = layer != nullptr && raft_layers > 0 && layer->id() < raft_layers;
+                        if (layer != nullptr && layer != base && !is_raft && layer->print_z <= raised_z + EPSILON) {
+                            delete layer;
+                            continue;
+                        }
+                        if (layer != nullptr)
+                            kept.emplace_back(layer);
+                    }
+                    base->print_z = raised_z;
+                    std::stable_sort(kept.begin(), kept.end(), [](const SupportLayer *a, const SupportLayer *b) {
+                        return a->print_z < b->print_z;
+                    });
+                    m_support_layers.swap(kept);
+                }
+            }
         }
         this->set_done(posSupportMaterial);
     }
@@ -1241,6 +1275,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "support_style"
             || opt_key == "support_object_xy_distance"
             || opt_key == "support_object_first_layer_gap"
+            || opt_key == "support_base_first_layer_z_offset"
             || opt_key == "support_base_pattern_spacing"
             || opt_key == "support_expansion"
             || opt_key == "independent_support_layer_height" // Orca
@@ -1427,7 +1462,6 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "seam_slope_steps"
             || opt_key == "seam_slope_inner_walls"
             || opt_key == "support_speed"
-            || opt_key == "support_base_first_layer_z_offset"
             || opt_key == "support_interface_speed"
             || opt_key == "overhang_1_4_speed"
             || opt_key == "overhang_2_4_speed"
